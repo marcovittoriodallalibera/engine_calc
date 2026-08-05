@@ -159,6 +159,14 @@ $UninstallProcess = Start-Process -FilePath $Uninstaller.FullName -ArgumentList 
 if ($UninstallProcess.ExitCode -ne 0) {
   throw "NSIS uninstaller exited with code $($UninstallProcess.ExitCode)."
 }
+$UninstallDeadline = [DateTime]::UtcNow.AddSeconds(15)
+while ((Test-Path -LiteralPath $InstalledApp.FullName) -and [DateTime]::UtcNow -lt $UninstallDeadline) {
+  Start-Sleep -Milliseconds 250
+}
+$InstallerUninstalled = -not (Test-Path -LiteralPath $InstalledApp.FullName)
+if (-not $InstallerUninstalled) {
+  throw "NSIS uninstall left the installed application executable in place."
+}
 
 Write-Host "Checking Authenticode status and generating release evidence."
 $SignatureRecords = @(
@@ -168,12 +176,17 @@ $SignatureRecords = @(
 )
 
 $Artefacts = @($Installer, $Portable) | ForEach-Object {
-  $Hash = Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256
+  $ArtefactFile = $_
+  $SignatureRecord = @($SignatureRecords | Where-Object { $_.file -eq $ArtefactFile.Name })
+  if ($SignatureRecord.Count -ne 1) {
+    throw "Expected exactly one signature record for '$($ArtefactFile.Name)'."
+  }
+  $Hash = Get-FileHash -LiteralPath $ArtefactFile.FullName -Algorithm SHA256
   [ordered]@{
-    file = $_.Name
-    bytes = $_.Length
+    file = $ArtefactFile.Name
+    bytes = $ArtefactFile.Length
     sha256 = $Hash.Hash.ToLowerInvariant()
-    authenticode = ($SignatureRecords | Where-Object { $_.file -eq $_.Name }).status
+    authenticode = $SignatureRecord[0].status
   }
 }
 
@@ -203,6 +216,7 @@ $Verification = [ordered]@{
     publicPromotionEligible = $ExpectedSignature -eq "Valid"
     note = if ($ExpectedSignature -eq "Valid") { "Authenticode signature verified." } else { "Unsigned internal test artefact. SHA-256 is not a publisher signature." }
   }
+  dependencyAudit = "passed"
   artefacts = $Artefacts
   signatures = $SignatureRecords
   fuses = $FuseReport
@@ -210,7 +224,7 @@ $Verification = [ordered]@{
     winUnpacked = $UnpackedSmoke
     portable = $PortableSmoke
     installed = $InstalledSmoke
-    installerUninstalled = -not (Test-Path -LiteralPath $InstalledApp.FullName)
+    installerUninstalled = $InstallerUninstalled
   }
 }
 
