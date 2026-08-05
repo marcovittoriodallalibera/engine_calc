@@ -13,7 +13,10 @@ import TimingDial, {
   type TimingMarker,
   type TimingPhaseArc,
 } from "@/components/timing-dial";
-import { evaluateCompressionScenario } from "@/lib/engine";
+import {
+  ENGINE_CHARACTER_PROFILES,
+  evaluateCompressionScenario,
+} from "@/lib/engine";
 import {
   analyseProject,
   type CylinderLiftPortComparison,
@@ -22,8 +25,9 @@ import {
 } from "@/lib/presentation/analyse-project";
 import {
   MAX_SHARE_FRAGMENT_LENGTH,
-  LEGACY_PROJECT_STORAGE_KEY,
+  LEGACY_PROJECT_STORAGE_KEYS,
   PROJECT_STORAGE_KEY,
+  changeRotaryMeasuredArc,
   cloneDemonstrationProject,
   decodeProjectFragment,
   encodeProjectFragment,
@@ -33,6 +37,7 @@ import {
   serialiseProject,
   validateProjectDocument,
   type EngineProjectDraft,
+  type CharacterProfile,
   type PortDraft,
   type PortSourceMode,
 } from "@/lib/project/model";
@@ -52,6 +57,23 @@ const sourceUnits: Record<PortSourceMode, string> = {
   "opening-angle": "deg",
   duration: "deg",
 };
+
+const characterProfileOptions: Array<{
+  value: CharacterProfile;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "none",
+    label: "No profile",
+    description: "Show geometry without contextual tuning annotations.",
+  },
+  ...Object.values(ENGINE_CHARACTER_PROFILES).map((profile) => ({
+    value: profile.id,
+    label: profile.label,
+    description: profile.description,
+  })),
+];
 
 const DEMONSTRATION_PROJECT_JSON = serialiseProject(cloneDemonstrationProject());
 
@@ -76,6 +98,62 @@ function formatConstraint(value: number): string {
 function formatTimeArea(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "Not set";
   return value.toExponential(3);
+}
+
+function formatBoundedValue(
+  value: number | null | undefined,
+  minimum: number | null | undefined,
+  maximum: number | null | undefined,
+  digits = 1,
+): string {
+  const nominal = formatNumber(value, digits);
+  if (
+    nominal === "Not set" ||
+    minimum === null ||
+    minimum === undefined ||
+    maximum === null ||
+    maximum === undefined
+  ) {
+    return nominal;
+  }
+  return `${nominal} (${formatNumber(minimum, digits)} to ${formatNumber(maximum, digits)})`;
+}
+
+function formatBoundedMeasure(
+  value: number | null | undefined,
+  minimum: number | null | undefined,
+  maximum: number | null | undefined,
+  unit: string,
+  digits = 1,
+): string {
+  const formatted = formatBoundedValue(value, minimum, maximum, digits);
+  return formatted === "Not set" ? formatted : `${formatted}${unit}`;
+}
+
+function formatProjectDate(value: string): string {
+  if (!value) return "Not set";
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.valueOf())) return "Not set";
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function formatGeneratedAt(date: Date): string {
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatSourceValue(value: string, unit: string): string {
+  return value.trim() ? `${value} ${unit}` : "Not set";
 }
 
 function normaliseAngle(angle: number): number {
@@ -237,6 +315,114 @@ function SectionHeading({
       </div>
       {action ? <div className="section-action">{action}</div> : null}
     </div>
+  );
+}
+
+function MethodologyDetailsContent() {
+  return (
+    <>
+      <div className="method-copy">
+        <p>
+          The centred slider-crank equation uses crank radius, centre-to-centre
+          rod length and crank angle. Port opening is solved exactly from piston
+          travel; symmetric closure is 360° minus the opening angle.
+        </p>
+        <p>
+          A positive rotary-to-transfer margin means the rotary inlet opens
+          before the selected transfer closes. A negative value is a closed
+          angular gap. This signed relationship is shown instead of claiming a
+          universal ratio between inlet and transfer durations.
+        </p>
+        <p>
+          Rotary arc conversion uses θ = 360L / (πD). The crank cut-away
+          and crankcase opening add to the total arc required by the desired
+          opening and closing angles. One physical arc is measured; the other
+          is calculated by subtraction and is never stored as a second authority.
+        </p>
+        <p>
+          Cylindrical inlet area is the instantaneous circumferential overlap
+          between crank cut-away and crankcase window, multiplied by their
+          measured common axial width. It is geometric sealing-surface area, not
+          discharge-corrected flow area.
+        </p>
+        <p>
+          Entered millimetre uncertainty is propagated through port event
+          boundaries, signed inlet margin, blowdown and geometric time-area. The
+          result is a bounded measurement interval, not a probability or a
+          manufacturing tolerance inferred by the calculator.
+        </p>
+        <p>
+          The Engine character estimate plots only geometric area and specific
+          time-area. A selected profile adds conditional lower-, mid- or
+          upper-speed language; it does not create an output or dyno curve.
+        </p>
+        <p>
+          Geometric compression uses full displacement. Trapped compression
+          uses only the swept volume from exhaust closure to TDC. Raising the
+          exhaust roof can therefore reduce trapped compression while leaving
+          geometric compression unchanged, provided the chamber volume is unchanged.
+        </p>
+      </div>
+      <div className="source-links">
+        <span>Reference trail</span>
+        <a
+          href="https://catalogue.polini.com/dep/PI702.pdf"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Polini PP18 conversion table
+        </a>
+        <a
+          href="https://saemobilus.sae.org/papers/effect-crankcase-volume-inlet-system-delivery-ratio-two-stroke-cycle-engines-670030"
+          target="_blank"
+          rel="noreferrer"
+        >
+          SAE 670030 on inlet time-area
+        </a>
+        <a
+          href="https://patents.google.com/patent/US20050139179A1/en"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Crank-web rotary timing reference
+        </a>
+        <a
+          href="https://catalogue.polini.com/dep/210_0043.pdf"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Polini Vespa rotary crank instructions
+        </a>
+        <a
+          href="https://saemobilus.sae.org/papers/relationship-port-shape-engine-performance-two-stroke-engines-1999-01-3333"
+          target="_blank"
+          rel="noreferrer"
+        >
+          SAE 1999-01-3333 on transfer shape
+        </a>
+        <a
+          href="https://wiki.germanscooterforum.de/index.php/Steuerzeiten_messen"
+          target="_blank"
+          rel="noreferrer"
+        >
+          GSF timing measurement uncertainty
+        </a>
+        <a
+          href="https://www.bridgestonemotorcycle.com/documents/delivery_ratio6.pdf"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Komotori and Watanabe on rotary inlet timing
+        </a>
+        <a
+          href="https://api.sip-scootershop.com/api/files/download/1/pdf/fd38cfbd-e197-4fe7-9c64-4904a6cdf2a3/SIP%2BBFA%2BEngine%2BInstructions.pdf"
+          target="_blank"
+          rel="noreferrer"
+        >
+          SIP-BFA kit-specific squish guidance
+        </a>
+      </div>
+    </>
   );
 }
 
@@ -488,8 +674,8 @@ function PortTimingTable({ analysis }: { analysis: EngineProjectAnalysis }) {
               </th>
               <td>
                 {analysis.rotary.source === "crank-and-case-arcs"
-                  ? "Crank & case arc geometry"
-                  : "Direct timing angles"}
+                  ? "Desired timing + solved arcs"
+                  : "Desired timing angles"}
               </td>
               <td>Not applicable</td>
               <td>{formatNumber(analysis.rotary.advanceBeforeTdcDeg, 1)}° BTDC</td>
@@ -511,15 +697,16 @@ function PortTimingTable({ analysis }: { analysis: EngineProjectAnalysis }) {
 function RotaryArcConversion({ analysis }: { analysis: EngineProjectAnalysis }) {
   const geometry = analysis.induction.geometry;
   if (!geometry) return null;
-  const direct = analysis.induction.direct;
+  const crankIsMeasured = geometry.measuredArc === "crank-cutaway";
 
   return (
     <div className="rotary-arc-conversion">
       <table>
-        <caption>Arc-to-angle conversion</caption>
+        <caption>Solved arc geometry</caption>
         <thead>
           <tr>
             <th scope="col">Component</th>
+            <th scope="col">Role</th>
             <th scope="col">Arc</th>
             <th scope="col">Angular contribution</th>
           </tr>
@@ -527,16 +714,41 @@ function RotaryArcConversion({ analysis }: { analysis: EngineProjectAnalysis }) 
         <tbody>
           <tr>
             <th scope="row">Crank cut-away</th>
-            <td>{formatNumber(geometry.crankCutawayArcMm, 2)} mm</td>
+            <td>{crankIsMeasured ? "Measured" : "Calculated"}</td>
+            <td>
+              {formatNumber(geometry.crankCutawayArcMm, 2)} mm
+              {geometry.uncertainty ? (
+                <small>
+                  {" "}({formatMeasurementRange(
+                    geometry.uncertainty.crankCutawayArcMm,
+                    2,
+                    "mm",
+                  )})
+                </small>
+              ) : null}
+            </td>
             <td>{formatNumber(geometry.crankCutawayDeg, 2)}°</td>
           </tr>
           <tr>
-            <th scope="row">Case opening</th>
-            <td>{formatNumber(geometry.crankcaseWindowArcMm, 2)} mm</td>
+            <th scope="row">Crankcase valve opening</th>
+            <td>{crankIsMeasured ? "Calculated" : "Measured"}</td>
+            <td>
+              {formatNumber(geometry.crankcaseWindowArcMm, 2)} mm
+              {geometry.uncertainty ? (
+                <small>
+                  {" "}({formatMeasurementRange(
+                    geometry.uncertainty.crankcaseWindowArcMm,
+                    2,
+                    "mm",
+                  )})
+                </small>
+              ) : null}
+            </td>
             <td>{formatNumber(geometry.crankcaseWindowDeg, 2)}°</td>
           </tr>
           <tr className="rotary-total-row">
-            <th scope="row">Derived inlet duration</th>
+            <th scope="row">Desired inlet total</th>
+            <td>Target</td>
             <td>{formatNumber(geometry.combinedArcMm, 2)} mm</td>
             <td>{formatNumber(geometry.durationDeg, 2)}°</td>
           </tr>
@@ -548,37 +760,672 @@ function RotaryArcConversion({ analysis }: { analysis: EngineProjectAnalysis }) 
       </p>
       <div className="rotary-edge-summary">
         <span>
-          <small>
-            {geometry.anchor === "opening-btdc"
-              ? "Measured opening"
-              : "Derived opening"}
-          </small>
+          <small>Desired opening</small>
           <strong>
-            {geometry.advanceBeforeTdcDeg === null
-              ? "Not positioned"
-              : `${formatNumber(geometry.advanceBeforeTdcDeg, 2)}° BTDC`}
+            {formatNumber(geometry.advanceBeforeTdcDeg, 2)}° BTDC
           </strong>
         </span>
         <span>
-          <small>
-            {geometry.anchor === "closing-atdc"
-              ? "Measured closing"
-              : "Derived closing"}
-          </small>
+          <small>Desired closing</small>
           <strong>
-            {geometry.delayAfterTdcDeg === null
-              ? "Not positioned"
-              : `${formatNumber(geometry.delayAfterTdcDeg, 2)}° ATDC`}
+            {formatNumber(geometry.delayAfterTdcDeg, 2)}° ATDC
           </strong>
         </span>
       </div>
-      {direct ? (
-        <p className="rotary-comparison-note">
-          Direct-angle reference: {formatNumber(direct.durationDeg, 2)}°. Geometry
-          difference: {formatSigned(geometry.directDurationDifferenceDeg, 2)}°.
+      <p className="rotary-comparison-note">
+        The {crankIsMeasured ? "crankcase opening" : "crank cut-away"} is
+        calculated at full precision by subtracting the measured arc from the
+        {" "}{formatNumber(geometry.combinedArcMm, 2)} mm total required by the
+        desired timing.
+      </p>
+      {geometry.uncertainty ? (
+        <p className="fine-print">
+          Bounds use {geometry.uncertainty.provenance.inputs.join(" and ")} as
+          deterministic worst-case inputs. No probability distribution or
+          confidence level is implied.
         </p>
       ) : null}
     </div>
+  );
+}
+
+function readableToken(value: string): string {
+  return value
+    .split("-")
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function formatMeasurementRange(
+  bounds: { minimum: number; maximum: number } | null | undefined,
+  digits: number,
+  unit: string,
+): string | null {
+  return bounds
+    ? `${formatNumber(bounds.minimum, digits)} to ${formatNumber(bounds.maximum, digits)} ${unit}`
+    : null;
+}
+
+function RotaryAreaChart({ analysis }: { analysis: EngineProjectAnalysis }) {
+  const rotary = analysis.rotary;
+  if (!rotary || rotary.areaSamples.length === 0) {
+    return (
+      <div className="character-plot character-plot-empty">
+        <div>
+          <h3>Rotary inlet opening area</h3>
+          <p>
+            Choose an inlet area source and complete its measurement to plot
+            geometric opening area against crank angle.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const maximumPointCount = 49;
+  const stride = Math.max(
+    1,
+    Math.ceil((rotary.areaSamples.length - 1) / (maximumPointCount - 1)),
+  );
+  const plottedSamples = rotary.areaSamples.filter(
+    (_, index) => index % stride === 0,
+  );
+  const finalSample = rotary.areaSamples.at(-1)!;
+  if (plottedSamples.at(-1) !== finalSample) plottedSamples.push(finalSample);
+
+  const width = 620;
+  const height = 250;
+  const left = 58;
+  const right = 18;
+  const top = 24;
+  const bottom = 52;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const duration = Math.max(finalSample.elapsedDeg, 1);
+  const maximumArea = Math.max(
+    ...plottedSamples.map(
+      (sample) => sample.maximumOpenAreaMm2 ?? sample.openAreaMm2,
+    ),
+    1,
+  );
+  const pointFor = (
+    sample: (typeof plottedSamples)[number],
+    areaMm2: number,
+  ) => {
+    const x = left + (sample.elapsedDeg / duration) * plotWidth;
+    const y = top + plotHeight - (areaMm2 / maximumArea) * plotHeight;
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  };
+  const linePoints = plottedSamples
+    .map((sample) => pointFor(sample, sample.openAreaMm2))
+    .join(" ");
+  const areaPoints = `${left},${top + plotHeight} ${linePoints} ${left + plotWidth},${top + plotHeight}`;
+  const hasUncertaintyEnvelope = plottedSamples.some(
+    (sample) =>
+      sample.minimumOpenAreaMm2 !== null &&
+      sample.maximumOpenAreaMm2 !== null,
+  );
+  const uncertaintyPoints = hasUncertaintyEnvelope
+    ? [
+        ...plottedSamples.map((sample) =>
+          pointFor(
+            sample,
+            sample.maximumOpenAreaMm2 ?? sample.openAreaMm2,
+          ),
+        ),
+        ...[...plottedSamples].reverse().map((sample) =>
+          pointFor(
+            sample,
+            sample.minimumOpenAreaMm2 ?? sample.openAreaMm2,
+          ),
+        ),
+      ].join(" ")
+    : null;
+
+  return (
+    <article className="character-plot">
+      <div className="character-plot-heading">
+        <div>
+          <h3>Rotary inlet opening area</h3>
+          <p>Geometric sealing-surface overlap through the inlet event.</p>
+        </div>
+        <span className="plot-source">
+          {rotary.areaModel === "cylindrical-overlap"
+            ? "Arc overlap"
+            : "Constant estimate"}
+        </span>
+      </div>
+      <svg
+        className="character-chart"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`Rotary inlet opening area from zero to ${formatNumber(duration, 1)} crank degrees, reaching ${formatNumber(rotary.maximumOpenAreaMm2, 1)} square millimetres`}
+      >
+        <line x1={left} x2={left} y1={top} y2={top + plotHeight} />
+        <line
+          x1={left}
+          x2={left + plotWidth}
+          y1={top + plotHeight}
+          y2={top + plotHeight}
+        />
+        <line
+          className="chart-guide"
+          x1={left}
+          x2={left + plotWidth}
+          y1={top + plotHeight / 2}
+          y2={top + plotHeight / 2}
+        />
+        {uncertaintyPoints ? (
+          <polygon className="chart-series-band" points={uncertaintyPoints} />
+        ) : null}
+        <polygon className="chart-area-fill" points={areaPoints} />
+        <polyline className="chart-area-line" points={linePoints} />
+        <text x={left - 8} y={top + 4} textAnchor="end">
+          {formatNumber(maximumArea, 0)}
+        </text>
+        <text x={left - 8} y={top + plotHeight + 4} textAnchor="end">
+          0
+        </text>
+        <text x={left} y={height - 22} textAnchor="middle">
+          0°
+        </text>
+        <text x={left + plotWidth} y={height - 22} textAnchor="middle">
+          {formatNumber(duration, 1)}°
+        </text>
+        <text
+          className="chart-axis-label"
+          x={left + plotWidth / 2}
+          y={height - 4}
+          textAnchor="middle"
+        >
+          Elapsed crank angle
+        </text>
+        <text
+          className="chart-axis-label"
+          x={16}
+          y={top + plotHeight / 2}
+          textAnchor="middle"
+          transform={`rotate(-90 16 ${top + plotHeight / 2})`}
+        >
+          Open area, mm²
+        </text>
+      </svg>
+      {rotary.areaUncertainty ? (
+        <p className="fine-print">
+          Shaded limits propagate {rotary.areaUncertainty.provenance.inputs.join(
+            ", ",
+          )}. They are deterministic worst-case bounds, not a confidence band.
+          Angle-area is {formatMeasurementRange(
+            rotary.areaUncertainty.overlapAngleAreaMm2Deg,
+            0,
+            "mm²·deg",
+          )}; specific time-area is {formatMeasurementRange(
+            rotary.areaUncertainty.overlapSpecificTimeArea,
+            7,
+            "s·mm²/cc",
+          ) ?? "not available until RPM and displacement are valid"}.
+        </p>
+      ) : null}
+      <details className="chart-data-disclosure">
+        <summary>Numeric area samples</summary>
+        <div className="table-scroll">
+          <table className="data-table compact-table">
+            <thead>
+              <tr>
+                <th scope="col">Elapsed crank angle</th>
+                <th scope="col">Open area</th>
+                {hasUncertaintyEnvelope ? (
+                  <th scope="col">Measurement bounds</th>
+                ) : null}
+              </tr>
+            </thead>
+            <tbody>
+              {plottedSamples.map((sample) => (
+                <tr key={sample.elapsedDeg}>
+                  <th scope="row">{formatNumber(sample.elapsedDeg, 2)}°</th>
+                  <td>{formatNumber(sample.openAreaMm2, 2)} mm²</td>
+                  {hasUncertaintyEnvelope ? (
+                    <td>
+                      {formatMeasurementRange(
+                        sample.minimumOpenAreaMm2 === null ||
+                          sample.maximumOpenAreaMm2 === null
+                          ? null
+                          : {
+                              minimum: sample.minimumOpenAreaMm2,
+                              maximum: sample.maximumOpenAreaMm2,
+                            },
+                        2,
+                        "mm²",
+                      ) ?? "Not available"}
+                    </td>
+                  ) : null}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </article>
+  );
+}
+
+function TimeAreaRpmChart({ analysis }: { analysis: EngineProjectAnalysis }) {
+  const geometry = analysis.characterGeometry;
+  if (!geometry || geometry.series.length === 0) {
+    return (
+      <div className="character-plot character-plot-empty">
+        <div>
+          <h3>Specific time-area across RPM</h3>
+          <p>
+            Complete displacement, port area and the bounded RPM sweep to plot
+            geometric specific time-area.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const width = 620;
+  const height = 250;
+  const left = 68;
+  const right = 18;
+  const top = 24;
+  const bottom = 52;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const maximum = Math.max(
+    ...geometry.series.flatMap((series) =>
+      series.samples.flatMap((sample) => [
+        sample.specificTimeArea,
+        sample.maximum ?? sample.specificTimeArea,
+      ]),
+    ),
+    1e-9,
+  );
+  const xFor = (rpm: number) =>
+    left +
+    ((rpm - geometry.rpmMinimum) /
+      (geometry.rpmMaximum - geometry.rpmMinimum)) *
+      plotWidth;
+  const yFor = (value: number) =>
+    top + plotHeight - (value / maximum) * plotHeight;
+
+  return (
+    <article className="character-plot">
+      <div className="character-plot-heading">
+        <div>
+          <h3>Specific time-area across RPM</h3>
+          <p>Same geometric angle-area, converted at each selected engine speed.</p>
+        </div>
+        <span className="plot-source">Geometric</span>
+      </div>
+      <svg
+        className="character-chart"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`Specific time-area from ${formatNumber(geometry.rpmMinimum, 0)} to ${formatNumber(geometry.rpmMaximum, 0)} RPM for ${geometry.series.length} geometric events`}
+      >
+        <line x1={left} x2={left} y1={top} y2={top + plotHeight} />
+        <line
+          x1={left}
+          x2={left + plotWidth}
+          y1={top + plotHeight}
+          y2={top + plotHeight}
+        />
+        <line
+          className="chart-guide"
+          x1={left}
+          x2={left + plotWidth}
+          y1={top + plotHeight / 2}
+          y2={top + plotHeight / 2}
+        />
+        {geometry.series.map((series) => {
+          const uncertaintyPoints = series.samples.some(
+            (sample) => sample.minimum !== null && sample.maximum !== null,
+          )
+            ? [
+                ...series.samples.map(
+                  (sample) =>
+                    `${xFor(sample.rpm).toFixed(2)},${yFor(sample.maximum ?? sample.specificTimeArea).toFixed(2)}`,
+                ),
+                ...[...series.samples]
+                  .reverse()
+                  .map(
+                    (sample) =>
+                      `${xFor(sample.rpm).toFixed(2)},${yFor(sample.minimum ?? sample.specificTimeArea).toFixed(2)}`,
+                  ),
+              ].join(" ")
+            : null;
+          const points = series.samples
+            .map(
+              (sample) =>
+                `${xFor(sample.rpm).toFixed(2)},${yFor(sample.specificTimeArea).toFixed(2)}`,
+            )
+            .join(" ");
+          return (
+            <g key={series.id} style={{ color: series.colour }}>
+              {uncertaintyPoints ? (
+                <polygon className="chart-series-band" points={uncertaintyPoints} />
+              ) : null}
+              <polyline className="chart-series-line" points={points} />
+            </g>
+          );
+        })}
+        <text x={left - 8} y={top + 4} textAnchor="end">
+          {maximum.toExponential(1)}
+        </text>
+        <text x={left - 8} y={top + plotHeight + 4} textAnchor="end">
+          0
+        </text>
+        <text x={left} y={height - 22} textAnchor="middle">
+          {formatNumber(geometry.rpmMinimum, 0)}
+        </text>
+        <text x={left + plotWidth} y={height - 22} textAnchor="middle">
+          {formatNumber(geometry.rpmMaximum, 0)}
+        </text>
+        <text
+          className="chart-axis-label"
+          x={left + plotWidth / 2}
+          y={height - 4}
+          textAnchor="middle"
+        >
+          Engine speed, RPM
+        </text>
+        <text
+          className="chart-axis-label"
+          x={16}
+          y={top + plotHeight / 2}
+          textAnchor="middle"
+          transform={`rotate(-90 16 ${top + plotHeight / 2})`}
+        >
+          Specific time-area, s·mm²/cc
+        </text>
+      </svg>
+      <div className="character-series-legend" aria-label="Time-area series">
+        {geometry.series.map((series) => (
+          <span key={series.id}>
+            <i style={{ background: series.colour }} aria-hidden="true" />
+            {series.label}
+          </span>
+        ))}
+      </div>
+      <details className="chart-data-disclosure">
+        <summary>Numeric RPM samples</summary>
+        <div className="table-scroll">
+          <table className="data-table compact-table">
+            <thead>
+              <tr>
+                <th scope="col">RPM</th>
+                {geometry.series.map((series) => (
+                  <th scope="col" key={series.id}>
+                    {series.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {geometry.series[0].samples.map((_, sampleIndex) => (
+                <tr key={geometry.series[0].samples[sampleIndex].rpm}>
+                  <th scope="row">
+                    {formatNumber(geometry.series[0].samples[sampleIndex].rpm, 0)}
+                  </th>
+                  {geometry.series.map((series) => {
+                    const sample = series.samples[sampleIndex];
+                    return (
+                      <td key={series.id}>
+                        {formatTimeArea(sample.specificTimeArea)}
+                        {sample.minimum !== null && sample.maximum !== null ? (
+                          <small className="table-sublabel">
+                            {formatTimeArea(sample.minimum)} to {formatTimeArea(sample.maximum)}
+                          </small>
+                        ) : null}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </article>
+  );
+}
+
+function CharacterSignature({
+  character,
+}: {
+  character: NonNullable<EngineProjectAnalysis["character"]>;
+}) {
+  const rows = [
+    {
+      id: "rpm-bias",
+      label: "RPM / speed emphasis",
+      description:
+        "Where the selected profile and timing place relative speed emphasis.",
+      lowerLabel: "Lower-speed biased",
+      upperLabel: "Higher-speed biased",
+      score: character.rpmBias,
+    },
+    {
+      id: "low-speed-response",
+      label: "Low-speed response",
+      description:
+        "Relative tendency to retain response at lower engine speeds.",
+      lowerLabel: "Less immediate",
+      upperLabel: "More immediate",
+      score: character.lowSpeedResponse,
+    },
+    {
+      id: "useful-band-breadth",
+      label: "Useful-band breadth",
+      description: "Relative tendency towards a focused or broad useful band.",
+      lowerLabel: "Focused",
+      upperLabel: "Broad",
+      score: character.midRangeBreadth,
+    },
+    {
+      id: "over-rev-tendency",
+      label: "Over-rev tendency",
+      description:
+        "Relative tendency to carry beyond the main useful-speed region.",
+      lowerLabel: "Lower",
+      upperLabel: "Higher",
+      score: character.overRevTendency,
+    },
+  ];
+
+  return (
+    <figure className="character-signature" aria-labelledby="character-signature-heading">
+      <figcaption className="character-signature-heading">
+        <div>
+          <h3 id="character-signature-heading">Character signature</h3>
+          <p>
+            Four relative heuristic scores on a 0 to 100 scale. They describe
+            tendencies, not torque, power or a safe engine-speed limit.
+          </p>
+        </div>
+        <div className="character-score-legend" aria-label="Character score key">
+          <span>
+            <i className="character-legend-marker" aria-hidden="true" />
+            Nominal marker
+          </span>
+          <span>
+            <i className="character-legend-range" aria-hidden="true" />
+            Measurement range
+          </span>
+        </div>
+      </figcaption>
+      <ul className="character-score-list">
+        {rows.map((row) => {
+          const rangeWidth = Math.max(
+            0,
+            row.score.maximum - row.score.minimum,
+          );
+          return (
+            <li className="character-score-row" key={row.id}>
+              <div className="character-score-copy">
+                <h4>{row.label}</h4>
+                <p>{row.description}</p>
+              </div>
+              <div className="character-score-plot">
+                <div className="character-score-scale" aria-hidden="true">
+                  <span>{row.lowerLabel}</span>
+                  <span>{row.upperLabel}</span>
+                </div>
+                <div className="character-score-track" aria-hidden="true">
+                  <span
+                    className="character-score-range"
+                    style={{
+                      left: `${row.score.minimum}%`,
+                      width: `${rangeWidth}%`,
+                    }}
+                  />
+                  <span
+                    className="character-score-marker"
+                    style={{ left: `${row.score.value}%` }}
+                  />
+                </div>
+              </div>
+              <div className="character-score-values">
+                <strong>{formatNumber(row.score.value, 0)}</strong>
+                <span>/100 nominal</span>
+                <small>
+                  {formatNumber(row.score.minimum, 0)} to{" "}
+                  {formatNumber(row.score.maximum, 0)} range
+                </small>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </figure>
+  );
+}
+
+function EngineCharacterEstimate({
+  analysis,
+  project,
+}: {
+  analysis: EngineProjectAnalysis;
+  project: EngineProjectDraft;
+}) {
+  const character = analysis.character;
+  const selectedProfile = characterProfileOptions.find(
+    (profile) => profile.value === project.character.profile,
+  );
+  const lowSpeedDescription = character
+    ? character.lowSpeedResponse.value >= 66
+      ? "stronger lower-speed tendency"
+      : character.lowSpeedResponse.value >= 40
+        ? "balanced lower-speed tendency"
+        : "reduced lower-speed tendency"
+    : null;
+
+  return (
+    <section className="result-section character-estimate" id="character-results">
+      <SectionHeading
+        title="Engine character estimate"
+        detail="Real geometric area and time-area plots, with optional profile-qualified interpretation. No output curve is predicted."
+      />
+      <div className="character-plot-grid">
+        <RotaryAreaChart analysis={analysis} />
+        <TimeAreaRpmChart analysis={analysis} />
+      </div>
+      {character ? <CharacterSignature character={character} /> : null}
+      <aside className="character-interpretation" aria-label="Profile interpretation">
+        <div>
+          <span className="evidence-level profile-heuristic">
+            Profile heuristic
+          </span>
+          <h3>{selectedProfile?.label ?? "No profile"}</h3>
+          <p>{selectedProfile?.description}</p>
+        </div>
+        {character ? (
+          <dl>
+            <div>
+              <dt>Speed emphasis</dt>
+              <dd>{readableToken(character.speedEmphasis)}</dd>
+            </div>
+            <div>
+              <dt>Useful band</dt>
+              <dd>{readableToken(character.bandShape)}</dd>
+            </div>
+            <div>
+              <dt>Delivery note</dt>
+              <dd>{lowSpeedDescription}</dd>
+            </div>
+            <div>
+              <dt>Model</dt>
+              <dd>{character.modelVersion}</dd>
+            </div>
+          </dl>
+        ) : (
+          <p className="character-no-profile">
+            Geometry remains available without interpretation. Select a profile
+            to add conditional lower-, mid- or upper-speed annotations.
+          </p>
+        )}
+      </aside>
+      <p className="model-note character-boundary">
+        {character?.modelStatement ??
+          "These plots show geometric opening and flow opportunity only. They do not predict output, combustion, exhaust-wave behaviour or a safe engine-speed range."}
+      </p>
+    </section>
+  );
+}
+
+function DiagnosticLevels({ analysis }: { analysis: EngineProjectAnalysis }) {
+  const levels = [
+    {
+      id: "calculated-geometry" as const,
+      label: "Calculated geometry",
+      description: "Deterministic relationships from the current inputs.",
+    },
+    {
+      id: "profile-heuristic" as const,
+      label: "Profile heuristic",
+      description: "Conditional interpretation from the selected use profile.",
+    },
+    {
+      id: "measured-or-modelled" as const,
+      label: "Measured or modelled",
+      description: "Results whose boundary depends on a stated measurement or model.",
+    },
+  ];
+  return (
+    <section className="result-section diagnostics-levels" id="diagnostic-results">
+      <SectionHeading
+        title="Diagnostic levels"
+        detail="Claim strength and warning severity remain separate, so a contextual note cannot override invalid geometry."
+      />
+      <div className="diagnostic-level-grid">
+        {levels.map((level) => {
+          const items = analysis.advisories.filter(
+            (advisory) => advisory.evidence === level.id,
+          );
+          return (
+            <article key={level.id}>
+              <span className={`evidence-level ${level.id}`}>{level.label}</span>
+              <p className="diagnostic-level-description">{level.description}</p>
+              <ul>
+                {items.map((item) => (
+                  <li className={`diagnostic-tone-${item.tone}`} key={item.id}>
+                    <strong>{item.title}</strong>
+                    <p>{item.message}</p>
+                    {item.sourceUrl ? (
+                      <a href={item.sourceUrl} target="_blank" rel="noreferrer">
+                        {item.sourceLabel ?? "Source"}
+                      </a>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -599,11 +1446,16 @@ export function EngineWorkbench() {
     "map",
   );
   const [openPrimarySections, setOpenPrimarySections] = useState({
+    report: true,
     geometry: true,
     cylinderLift: true,
     ports: true,
     induction: true,
+    character: true,
   });
+  const [reportGeneratedAt, setReportGeneratedAt] = useState(() =>
+    formatGeneratedAt(new Date()),
+  );
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const analysis = useMemo(() => analyseProject(project), [project]);
@@ -619,18 +1471,21 @@ export function EngineWorkbench() {
   const rotaryAdvanceDeg = parseLocaleNumber(project.induction.advanceBtdcDeg);
   const rotaryDelayDeg = parseLocaleNumber(project.induction.delayAtdcDeg);
   const rotaryDiameterMm = parseLocaleNumber(project.induction.crankshaftDiameterMm);
-  const rotaryCrankArcMm = parseLocaleNumber(project.induction.crankCutawayArcMm);
-  const rotaryCaseArcMm = parseLocaleNumber(project.induction.crankcaseWindowArcMm);
+  const rotaryMeasuredArcMm = parseLocaleNumber(project.induction.measuredArcMm);
   const rotaryCircumferenceMm =
     rotaryDiameterMm !== null && rotaryDiameterMm > 0
       ? Math.PI * rotaryDiameterMm
       : null;
-  const rotaryCombinedDurationDeg =
+  const rotaryDesiredDurationDeg =
+    rotaryAdvanceDeg !== null && rotaryDelayDeg !== null
+      ? rotaryAdvanceDeg + rotaryDelayDeg
+      : null;
+  const rotaryRequiredCombinedArcMm =
     rotaryCircumferenceMm !== null &&
-    rotaryCrankArcMm !== null &&
-    rotaryCaseArcMm !== null
-      ? ((rotaryCrankArcMm + rotaryCaseArcMm) * 360) /
-        rotaryCircumferenceMm
+    rotaryDesiredDurationDeg !== null &&
+    rotaryDesiredDurationDeg >= 0 &&
+    rotaryDesiredDurationDeg <= 360
+      ? (rotaryCircumferenceMm * rotaryDesiredDurationDeg) / 360
       : null;
   const showCylinderLiftReferenceMarkers =
     analysis.cylinderLift.appliedThicknessMm > 0 &&
@@ -641,19 +1496,33 @@ export function EngineWorkbench() {
     rotaryDelayDeg !== null &&
     rotaryAdvanceDeg + rotaryDelayDeg > 360
       ? "Opening advance and closing delay must total 360° or less."
+      : project.induction.timingSource === "crank-and-case-arcs" &&
+          rotaryAdvanceDeg !== null &&
+          rotaryDelayDeg !== null &&
+          rotaryAdvanceDeg + rotaryDelayDeg <= 0
+        ? "Arc sizing requires a desired duration greater than 0°."
       : null;
-  const rotaryCombinedArcValidationMessage =
-    rotaryCircumferenceMm !== null &&
-    rotaryCrankArcMm !== null &&
-    rotaryCaseArcMm !== null &&
-    rotaryCrankArcMm + rotaryCaseArcMm >
-      rotaryCircumferenceMm + Math.max(1, rotaryCircumferenceMm) * 1e-12
-      ? "The two arcs must combine to one circumference or less."
+  const rotaryMeasuredArcValidationMessage =
+    rotaryRequiredCombinedArcMm !== null &&
+    rotaryMeasuredArcMm !== null &&
+    rotaryRequiredCombinedArcMm - rotaryMeasuredArcMm <=
+      Math.max(
+        1,
+        rotaryCircumferenceMm ?? 0,
+        rotaryRequiredCombinedArcMm,
+      ) *
+        1e-12
+      ? `Use less than ${formatConstraint(rotaryRequiredCombinedArcMm)} mm so the calculated counterpart remains positive.`
       : null;
   const isIllustrativeProject = useMemo(
     () => serialiseProject(project) === DEMONSTRATION_PROJECT_JSON,
     [project],
   );
+  const reportDetailLineCount = project.report.engineDetails.split(/\r\n?|\n/u).length;
+  const reportDetailsError =
+    reportDetailLineCount > 3 ? "Use no more than three lines." : null;
+  const canPrint =
+    portableProject.ok && analysis.validGeometry && analysis.cylinderLift.valid;
   const localSaveMessage =
     localSaveState === "saved"
       ? "Saved locally"
@@ -678,9 +1547,13 @@ export function EngineWorkbench() {
       }
       if (!restored) {
         try {
-          const stored =
-            window.localStorage.getItem(PROJECT_STORAGE_KEY) ??
-            window.localStorage.getItem(LEGACY_PROJECT_STORAGE_KEY);
+          let stored = window.localStorage.getItem(PROJECT_STORAGE_KEY);
+          if (stored === null) {
+            for (const legacyKey of LEGACY_PROJECT_STORAGE_KEYS) {
+              stored = window.localStorage.getItem(legacyKey);
+              if (stored !== null) break;
+            }
+          }
           if (stored) {
             const parsed = parseProjectJson(stored);
             if (parsed.ok) {
@@ -697,6 +1570,14 @@ export function EngineWorkbench() {
       setHydrated(true);
     }, 0);
     return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const prepare = () => setReportGeneratedAt(formatGeneratedAt(new Date()));
+    window.addEventListener("beforeprint", prepare);
+    return () => {
+      window.removeEventListener("beforeprint", prepare);
+    };
   }, []);
 
   useEffect(() => {
@@ -773,6 +1654,17 @@ export function EngineWorkbench() {
     }));
   }
 
+  function updateReport<K extends keyof EngineProjectDraft["report"]>(
+    key: K,
+    value: EngineProjectDraft["report"][K],
+  ) {
+    noteEdit();
+    setProject((current) => ({
+      ...current,
+      report: { ...current.report, [key]: value },
+    }));
+  }
+
   function updateCompression<K extends keyof EngineProjectDraft["compression"]>(
     key: K,
     value: EngineProjectDraft["compression"][K],
@@ -816,23 +1708,29 @@ export function EngineWorkbench() {
     }));
   }
 
-  function setRotaryArcAnchor(
-    anchor: EngineProjectDraft["induction"]["arcAnchor"],
+  function updateCharacter<K extends keyof EngineProjectDraft["character"]>(
+    key: K,
+    value: EngineProjectDraft["character"][K],
   ) {
     noteEdit();
-    const derivedAnchor = analysis.induction.geometry
-      ? anchor === "opening-btdc"
-        ? analysis.induction.geometry.advanceBeforeTdcDeg
-        : analysis.induction.geometry.delayAfterTdcDeg
-      : null;
     setProject((current) => ({
       ...current,
-      induction: {
-        ...current.induction,
-        arcAnchor: anchor,
-        arcAnchorAngleDeg:
-          derivedAnchor === null ? "" : String(derivedAnchor),
-      },
+      character: { ...current.character, [key]: value },
+    }));
+  }
+
+  function setRotaryMeasuredArc(
+    measuredArc: EngineProjectDraft["induction"]["measuredArc"],
+  ) {
+    if (measuredArc === project.induction.measuredArc) return;
+    noteEdit();
+    setProject((current) => ({
+      ...current,
+      induction: changeRotaryMeasuredArc(
+        current.induction,
+        measuredArc,
+        analysis.induction.geometry,
+      ),
     }));
   }
 
@@ -934,6 +1832,19 @@ export function EngineWorkbench() {
       `${safeProjectFilename(project.name)}-timing-diagram.svg`,
     );
     setActionStatus("Timing diagram SVG exported.");
+  }
+
+  function printReport() {
+    if (!canPrint) {
+      setActionStatus(
+        "Print unavailable: complete the valid project geometry and report details first.",
+      );
+      return;
+    }
+    const generatedAt = formatGeneratedAt(new Date());
+    setReportGeneratedAt(generatedAt);
+    setActionStatus("A4 report prepared. Use the print dialogue to print or save as PDF.");
+    window.requestAnimationFrame(() => window.print());
   }
 
   async function shareProject() {
@@ -1243,11 +2154,37 @@ export function EngineWorkbench() {
               <button type="button" onClick={exportSvg}>
                 Export diagram
               </button>
-              <button type="button" onClick={() => window.print()}>
-                Print report
-              </button>
             </div>
           </details>
+          <button
+            className="button-print"
+            type="button"
+            onClick={printReport}
+            disabled={!canPrint}
+            title={
+              canPrint
+                ? "Print the A4 project report"
+                : "Complete valid project geometry and report details before printing"
+            }
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              width="16"
+              height="16"
+              fill="none"
+            >
+              <path d="M5 7V2.75h10V7" stroke="currentColor" strokeWidth="1.5" />
+              <path
+                d="M5 14H3.5A1.5 1.5 0 0 1 2 12.5v-4A1.5 1.5 0 0 1 3.5 7h13A1.5 1.5 0 0 1 18 8.5v4a1.5 1.5 0 0 1-1.5 1.5H15"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
+              <path d="M5 11.5h10v5.75H5z" stroke="currentColor" strokeWidth="1.5" />
+              <circle cx="15.25" cy="9.5" r=".75" fill="currentColor" />
+            </svg>
+            <span>Print</span>
+          </button>
           <button className="button-primary" type="button" onClick={shareProject}>
             Share
           </button>
@@ -1327,6 +2264,83 @@ export function EngineWorkbench() {
           </div>
 
           <div className="control-scroll">
+            <details
+              className="control-section report-identity-section"
+              open={openPrimarySections.report}
+              onToggle={(event) =>
+                setPrimarySectionOpen("report", event.currentTarget.open)
+              }
+            >
+              <summary>
+                <span>
+                  <strong>Project report</strong>
+                  <small>Code, date and engine specification</small>
+                </span>
+              </summary>
+              <div className="control-section-body">
+                <div className="field-grid field-grid-2">
+                  <label className="field field-compact">
+                    <span className="field-label">Project code</span>
+                    <span className="input-shell report-input-shell">
+                      <input
+                        type="text"
+                        value={project.report.projectCode}
+                        maxLength={40}
+                        placeholder="e.g. P360-001"
+                        onChange={(event) =>
+                          updateReport("projectCode", event.target.value)
+                        }
+                      />
+                    </span>
+                  </label>
+                  <label className="field field-compact">
+                    <span className="field-label">Project date</span>
+                    <span className="input-shell report-input-shell">
+                      <input
+                        type="date"
+                        value={project.report.projectDate}
+                        onChange={(event) =>
+                          updateReport("projectDate", event.target.value)
+                        }
+                      />
+                    </span>
+                  </label>
+                </div>
+                <label className="field report-details-field">
+                  <span className="field-label">Engine details</span>
+                  <span
+                    className={`textarea-shell ${reportDetailsError ? "input-invalid" : ""}`}
+                  >
+                    <textarea
+                      value={project.report.engineDetails}
+                      rows={3}
+                      maxLength={360}
+                      aria-invalid={reportDetailsError !== null}
+                      aria-describedby={
+                        reportDetailsError
+                          ? "engine-details-help engine-details-error"
+                          : "engine-details-help"
+                      }
+                      placeholder={
+                        "Cylinder, crankshaft and connecting rod\nInduction, carburettor and exhaust\nMachining, ignition or test notes"
+                      }
+                      onChange={(event) =>
+                        updateReport("engineDetails", event.target.value)
+                      }
+                    />
+                  </span>
+                  <span className="report-field-help" id="engine-details-help">
+                    Up to three short lines. Printed beneath the project title.
+                  </span>
+                  {reportDetailsError ? (
+                    <span className="field-error" id="engine-details-error">
+                      {reportDetailsError}
+                    </span>
+                  ) : null}
+                </label>
+              </div>
+            </details>
+
             <details
               className="control-section"
               open={openPrimarySections.geometry}
@@ -1575,7 +2589,7 @@ export function EngineWorkbench() {
                   <>
                     <div
                       className="segmented-control segmented-control-2"
-                      aria-label="Rotary timing source"
+                      aria-label="Rotary calculation mode"
                       role="group"
                     >
                       <button
@@ -1592,7 +2606,7 @@ export function EngineWorkbench() {
                           updateInduction("timingSource", "direct-angles")
                         }
                       >
-                        Timing angles
+                        Timing only
                       </button>
                       <button
                         type="button"
@@ -1613,171 +2627,204 @@ export function EngineWorkbench() {
                           )
                         }
                       >
-                        Crank & case arcs
+                        Size physical arcs
                       </button>
                     </div>
 
-                    {project.induction.timingSource === "direct-angles" ? (
-                      <>
-                        <div className="field-grid field-grid-2">
-                        <NumberField
-                          compact
-                          label="Inlet opens"
-                          value={project.induction.advanceBtdcDeg}
-                          unit="° BTDC"
-                          minimum={0}
-                          maximum={360}
-                          validationMessage={rotaryTimingValidationMessage}
-                          onChange={(value) =>
-                            updateInduction("advanceBtdcDeg", value)
-                          }
-                        />
-                        <NumberField
-                          compact
-                          label="Inlet closes"
-                          value={project.induction.delayAtdcDeg}
-                          unit="° ATDC"
-                          minimum={0}
-                          maximum={360}
-                          validationMessage={rotaryTimingValidationMessage}
-                          onChange={(value) =>
-                            updateInduction("delayAtdcDeg", value)
-                          }
-                        />
-                        </div>
-                        {!analysis.induction.direct ? (
-                          <p className="mode-note">
-                            Complete both direct timing edges to position the rotary
-                            inlet on the 360° map.
-                          </p>
-                        ) : null}
-                      </>
-                    ) : (
+                    <div className="field-grid field-grid-2">
+                      <NumberField
+                        compact
+                        label="Desired inlet opening"
+                        value={project.induction.advanceBtdcDeg}
+                        unit="° BTDC"
+                        minimum={0}
+                        maximum={360}
+                        validationMessage={rotaryTimingValidationMessage}
+                        onChange={(value) =>
+                          updateInduction("advanceBtdcDeg", value)
+                        }
+                      />
+                      <NumberField
+                        compact
+                        label="Desired inlet closing"
+                        value={project.induction.delayAtdcDeg}
+                        unit="° ATDC"
+                        minimum={0}
+                        maximum={360}
+                        validationMessage={rotaryTimingValidationMessage}
+                        onChange={(value) =>
+                          updateInduction("delayAtdcDeg", value)
+                        }
+                      />
+                    </div>
+                    {!analysis.induction.direct ? (
+                      <p className="mode-note">
+                        Complete both desired timing edges to position the rotary
+                        inlet on the 360° map.
+                      </p>
+                    ) : null}
+
+                    {project.induction.timingSource ===
+                    "crank-and-case-arcs" ? (
                       <fieldset className="rotary-geometry-fields">
-                        <legend>Rotary arc timing model</legend>
+                        <legend>Rotary geometry solver</legend>
                         <p className="rotary-assumption-note">
-                          Arc measurements determine duration. One measured edge
-                          positions that duration relative to TDC.
+                          Desired opening plus closing defines the total arc. Enter
+                          the timing-track diameter and one physical length; the
+                          other length is calculated automatically.
                         </p>
                         <div className="field-grid field-grid-2">
                           <NumberField
-                            compact
                             label="Valve timing-track diameter"
                             value={project.induction.crankshaftDiameterMm}
                             unit="mm"
                             minimum={0}
                             exclusiveMinimum
-                            help="Diameter of the circular measurement path on the crank-web rotary-valve face. Measure both arcs along this same path."
+                            help="Diameter of the circular measurement path on the crank-web rotary-valve face. The measured and calculated arcs use this same path."
                             onChange={(value) =>
                               updateInduction("crankshaftDiameterMm", value)
                             }
                           />
                           <NumberField
-                            compact
-                            label="Crank cut-away arc"
-                            value={project.induction.crankCutawayArcMm}
-                            unit="mm"
-                            minimum={0}
-                            exclusiveMinimum
-                            maximum={rotaryCircumferenceMm ?? undefined}
-                            validationMessage={
-                              rotaryCombinedArcValidationMessage
+                            label="Diameter uncertainty"
+                            value={
+                              project.induction
+                                .crankshaftDiameterUncertaintyMm
                             }
-                            help="Open arc on the crank web, measured along the curved sealing surface."
+                            unit="± mm"
+                            minimum={0}
+                            help="Optional deterministic plus-or-minus measurement bound. It is not a standard deviation or confidence interval."
                             onChange={(value) =>
-                              updateInduction("crankCutawayArcMm", value)
+                              updateInduction(
+                                "crankshaftDiameterUncertaintyMm",
+                                value,
+                              )
                             }
                           />
+                        </div>
+                        <fieldset className="rotary-measurement-choice">
+                          <legend>Manual arc measurement</legend>
+                          <div
+                            className="segmented-control segmented-control-2"
+                            aria-label="Manual arc measurement"
+                            role="group"
+                          >
+                            <button
+                              type="button"
+                              className={
+                                project.induction.measuredArc ===
+                                "crank-cutaway"
+                                  ? "is-active"
+                                  : ""
+                              }
+                              aria-pressed={
+                                project.induction.measuredArc ===
+                                "crank-cutaway"
+                              }
+                              onClick={() =>
+                                setRotaryMeasuredArc("crank-cutaway")
+                              }
+                            >
+                              Crank cut-away
+                            </button>
+                            <button
+                              type="button"
+                              className={
+                                project.induction.measuredArc ===
+                                "crankcase-opening"
+                                  ? "is-active"
+                                  : ""
+                              }
+                              aria-pressed={
+                                project.induction.measuredArc ===
+                                "crankcase-opening"
+                              }
+                              onClick={() =>
+                                setRotaryMeasuredArc("crankcase-opening")
+                              }
+                            >
+                              Crankcase opening
+                            </button>
+                          </div>
+                        </fieldset>
+                        <div className="rotary-solver-pair">
                           <NumberField
-                            compact
-                            label="Crankcase opening arc"
-                            value={project.induction.crankcaseWindowArcMm}
+                            label={
+                              project.induction.measuredArc ===
+                              "crank-cutaway"
+                                ? "Measured crank cut-away arc"
+                                : "Measured crankcase valve opening"
+                            }
+                            value={project.induction.measuredArcMm}
                             unit="mm"
                             minimum={0}
                             exclusiveMinimum
-                            maximum={rotaryCircumferenceMm ?? undefined}
                             validationMessage={
-                              rotaryCombinedArcValidationMessage
+                              rotaryMeasuredArcValidationMessage
                             }
-                            help="Circumferential length of the inlet opening on the crankcase sealing track."
+                            help="Measure this circumferential length along the timing track, not as a straight chord. This is the only manually entered arc."
                             onChange={(value) =>
-                              updateInduction("crankcaseWindowArcMm", value)
+                              updateInduction("measuredArcMm", value)
+                            }
+                          />
+                          <output
+                            className="rotary-derived-output"
+                            aria-live="polite"
+                            aria-label={
+                              project.induction.measuredArc ===
+                              "crank-cutaway"
+                                ? "Calculated crankcase valve opening"
+                                : "Calculated crank cut-away arc"
+                            }
+                          >
+                            <span>
+                              {project.induction.measuredArc ===
+                              "crank-cutaway"
+                                ? "Calculated crankcase valve opening"
+                                : "Calculated crank cut-away arc"}
+                            </span>
+                            <strong>
+                              {analysis.induction.geometry
+                                ? `${formatNumber(
+                                    analysis.induction.geometry.derivedArcMm,
+                                    2,
+                                  )} mm`
+                                : "Waiting for valid inputs"}
+                            </strong>
+                            <small>
+                              Total required arc minus the manual measurement
+                            </small>
+                          </output>
+                        </div>
+                        <div className="field-grid">
+                          <NumberField
+                            label="Measured arc uncertainty"
+                            value={project.induction.measuredArcUncertaintyMm}
+                            unit="± mm"
+                            minimum={0}
+                            help="Optional deterministic plus-or-minus bound for the one authoritative manual arc measurement."
+                            onChange={(value) =>
+                              updateInduction(
+                                "measuredArcUncertaintyMm",
+                                value,
+                              )
                             }
                           />
                         </div>
-                        <div
-                          className="segmented-control segmented-control-2"
-                          aria-label="Rotary geometry phase anchor"
-                          role="group"
-                        >
-                          <button
-                            type="button"
-                            className={
-                              project.induction.arcAnchor === "opening-btdc"
-                                ? "is-active"
-                                : ""
-                            }
-                            aria-pressed={
-                              project.induction.arcAnchor === "opening-btdc"
-                            }
-                            onClick={() =>
-                              setRotaryArcAnchor("opening-btdc")
-                            }
-                          >
-                            Opening fixed
-                          </button>
-                          <button
-                            type="button"
-                            className={
-                              project.induction.arcAnchor === "closing-atdc"
-                                ? "is-active"
-                                : ""
-                            }
-                            aria-pressed={
-                              project.induction.arcAnchor === "closing-atdc"
-                            }
-                            onClick={() =>
-                              setRotaryArcAnchor("closing-atdc")
-                            }
-                          >
-                            Closing fixed
-                          </button>
-                        </div>
-                        <NumberField
-                          label={
-                            project.induction.arcAnchor === "opening-btdc"
-                              ? "Measured inlet opening"
-                              : "Measured inlet closing"
-                          }
-                          value={project.induction.arcAnchorAngleDeg}
-                          unit={
-                            project.induction.arcAnchor === "opening-btdc"
-                              ? "° BTDC"
-                              : "° ATDC"
-                          }
-                          minimum={0}
-                          maximum={rotaryCombinedDurationDeg ?? 360}
-                          help="This is the authoritative timing edge. The opposite edge is derived from the combined arc duration."
-                          onChange={(value) =>
-                            updateInduction("arcAnchorAngleDeg", value)
-                          }
-                        />
+                        {rotaryRequiredCombinedArcMm !== null ? (
+                          <p className="rotary-formula-note">
+                            {formatNumber(rotaryDesiredDurationDeg, 2)}° desired at
+                            Ø {formatNumber(rotaryDiameterMm, 2)} mm requires
+                            {" "}{formatNumber(rotaryRequiredCombinedArcMm, 2)} mm
+                            total arc.
+                          </p>
+                        ) : null}
                         <p className="fine-print">
                           Assumes the crankcase timing-track diameter equals the
                           crank-web timing-track diameter. Measure along the arc,
                           not as a straight chord.
                         </p>
                       </fieldset>
-                    )}
-
-                    {analysis.induction.geometry ? (
-                      <RotaryArcConversion analysis={analysis} />
-                    ) : project.induction.timingSource ===
-                      "crank-and-case-arcs" ? (
-                      <p className="mode-note">
-                        Complete the diameter, both arcs and one timing anchor to
-                        position the inlet on the 360° map.
-                      </p>
                     ) : analysis.induction.direct &&
                       analysis.induction.direct.equivalentCombinedArcMm !==
                         null ? (
@@ -1790,20 +2837,122 @@ export function EngineWorkbench() {
                       </p>
                     ) : null}
 
-                    <NumberField
-                      label="Effective inlet window area"
-                      value={project.induction.effectiveWindowAreaMm2}
-                      unit="mm²"
-                      minimum={0}
-                      help="Used only for an idealised constant-area inlet time-area estimate. The actual opening curve is not modelled."
-                      onChange={(value) =>
-                        updateInduction("effectiveWindowAreaMm2", value)
-                      }
-                    />
+                    {project.induction.timingSource ===
+                      "crank-and-case-arcs" &&
+                    analysis.induction.geometry ? (
+                      <RotaryArcConversion analysis={analysis} />
+                    ) : null}
+
+                    <fieldset className="rotary-area-source">
+                      <legend>Inlet area source</legend>
+                      <div
+                        className="segmented-control segmented-control-2"
+                        aria-label="Rotary inlet area source"
+                        role="group"
+                      >
+                        <button
+                          type="button"
+                          className={
+                            project.induction.areaSource ===
+                            "cylindrical-overlap"
+                              ? "is-active"
+                              : ""
+                          }
+                          aria-pressed={
+                            project.induction.areaSource ===
+                            "cylindrical-overlap"
+                          }
+                          onClick={() =>
+                            updateInduction(
+                              "areaSource",
+                              "cylindrical-overlap",
+                            )
+                          }
+                        >
+                          Arc overlap
+                        </button>
+                        <button
+                          type="button"
+                          className={
+                            project.induction.areaSource === "constant-area"
+                              ? "is-active"
+                              : ""
+                          }
+                          aria-pressed={
+                            project.induction.areaSource === "constant-area"
+                          }
+                          onClick={() =>
+                            updateInduction("areaSource", "constant-area")
+                          }
+                        >
+                          Constant estimate
+                        </button>
+                      </div>
+                      {project.induction.areaSource ===
+                      "cylindrical-overlap" ? (
+                        <>
+                          <NumberField
+                            label="Common axial overlap width"
+                            value={
+                              project.induction.commonAxialOverlapWidthMm
+                            }
+                            unit="mm"
+                            minimum={0}
+                            exclusiveMinimum
+                            help="Measured axial width shared by the crank cut-away and crankcase window. Combined with their instantaneous circumferential overlap, it gives the idealised geometric opening area."
+                            onChange={(value) =>
+                              updateInduction(
+                                "commonAxialOverlapWidthMm",
+                                value,
+                              )
+                            }
+                          />
+                          <NumberField
+                            label="Axial width uncertainty"
+                            value={
+                              project.induction
+                                .commonAxialOverlapWidthUncertaintyMm
+                            }
+                            unit="± mm"
+                            minimum={0}
+                            help="Optional deterministic plus-or-minus bound for the shared axial sealing width."
+                            onChange={(value) =>
+                              updateInduction(
+                                "commonAxialOverlapWidthUncertaintyMm",
+                                value,
+                              )
+                            }
+                          />
+                          <p className="fine-print">
+                            Arc overlap requires valid physical arc sizing. It
+                            models a sharp-edged rectangular sealing-surface
+                            overlap, not duct area or discharged airflow.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <NumberField
+                            label="Constant effective inlet area"
+                            value={project.induction.effectiveWindowAreaMm2}
+                            unit="mm²"
+                            minimum={0}
+                            exclusiveMinimum
+                            help="Backward-compatible idealisation that applies one entered area across the full inlet duration."
+                            onChange={(value) =>
+                              updateInduction("effectiveWindowAreaMm2", value)
+                            }
+                          />
+                          <p className="fine-print">
+                            This approximation preserves older projects but does
+                            not describe the changing crank-to-case overlap.
+                          </p>
+                        </>
+                      )}
+                    </fieldset>
                     <p className="fine-print">
-                      The active source drives the map, overlap and time-area in
-                      realtime. The inactive source remains a comparison and is never
-                      silently substituted.
+                      Desired timing drives the map, overlap and time-area in
+                      realtime. Geometry mode sizes the crank and case arcs without
+                      changing those desired angles.
                     </p>
                   </>
                 ) : (
@@ -1813,6 +2962,92 @@ export function EngineWorkbench() {
                       : "Induction timing metrics are marked not applicable."}
                   </p>
                 )}
+              </div>
+            </details>
+
+            <details
+              className="control-section"
+              open={openPrimarySections.character}
+              onToggle={(event) =>
+                setPrimarySectionOpen("character", event.currentTarget.open)
+              }
+            >
+              <summary>
+                <span>
+                  <strong>Character view</strong>
+                  <small>Context profile and RPM sweep</small>
+                </span>
+              </summary>
+              <div className="control-section-body">
+                <label className="field">
+                  <span className="field-label">Interpretation profile</span>
+                  <span className="select-shell">
+                    <select
+                      value={project.character.profile}
+                      onChange={(event) =>
+                        updateCharacter(
+                          "profile",
+                          event.target.value as CharacterProfile,
+                        )
+                      }
+                    >
+                      {characterProfileOptions.map((profile) => (
+                        <option value={profile.value} key={profile.value}>
+                          {profile.label}
+                        </option>
+                      ))}
+                    </select>
+                  </span>
+                </label>
+                <p className="mode-note">
+                  {
+                    characterProfileOptions.find(
+                      (profile) =>
+                        profile.value === project.character.profile,
+                    )?.description
+                  }
+                </p>
+                <div className="field-grid field-grid-2">
+                  <NumberField
+                    compact
+                    label="Sweep start"
+                    value={project.character.rpmMinimum}
+                    unit="RPM"
+                    minimum={500}
+                    maximum={19900}
+                    integer
+                    onChange={(value) =>
+                      updateCharacter("rpmMinimum", value)
+                    }
+                  />
+                  <NumberField
+                    compact
+                    label="Sweep end"
+                    value={project.character.rpmMaximum}
+                    unit="RPM"
+                    minimum={600}
+                    maximum={20000}
+                    integer
+                    onChange={(value) =>
+                      updateCharacter("rpmMaximum", value)
+                    }
+                  />
+                  <NumberField
+                    compact
+                    label="Sample step"
+                    value={project.character.rpmStep}
+                    unit="RPM"
+                    minimum={100}
+                    maximum={2000}
+                    integer
+                    onChange={(value) => updateCharacter("rpmStep", value)}
+                  />
+                </div>
+                <p className="fine-print">
+                  Profile reference {project.character.referenceSetVersion}.
+                  Profiles affect only contextual annotations. Geometry and
+                  time-area calculations remain unchanged.
+                </p>
               </div>
             </details>
 
@@ -2058,6 +3293,47 @@ export function EngineWorkbench() {
         </aside>
 
         <section className="analysis-panel" aria-label="Calculated results">
+          <header className="print-report-header">
+            <div className="print-report-brand">
+              <span>PHASE 360</span>
+              <strong>Two-stroke timing report</strong>
+            </div>
+            <div className="print-report-title">
+              <h1>{project.name || "Untitled engine"}</h1>
+              {project.report.engineDetails.trim() ? (
+                <div className="print-report-details">
+                  {project.report.engineDetails.split(/\r\n?|\n/u).map((line, index) => (
+                    <p key={`${index}-${line}`}>{line || "\u00a0"}</p>
+                  ))}
+                </div>
+              ) : (
+                <p className="print-report-empty">No engine specification entered.</p>
+              )}
+            </div>
+            <dl className="print-report-meta">
+              <div>
+                <dt>Project code</dt>
+                <dd>{project.report.projectCode || "Not set"}</dd>
+              </div>
+              <div>
+                <dt>Project date</dt>
+                <dd>
+                  {project.report.projectDate ? (
+                    <time dateTime={project.report.projectDate}>
+                      {formatProjectDate(project.report.projectDate)}
+                    </time>
+                  ) : (
+                    "Not set"
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>Generated</dt>
+                <dd suppressHydrationWarning>{reportGeneratedAt}</dd>
+              </div>
+            </dl>
+          </header>
+
           <div className="analysis-workspace">
             <div className="analysis-intro">
               <div>
@@ -2147,14 +3423,18 @@ export function EngineWorkbench() {
               />
               <Metric
                 label="Inlet to transfer"
-                value={formatSigned(primaryTransfer?.valveMarginDeg, 1)}
+                value={formatSigned(analysis.rotary?.signedTransferMarginDeg, 1)}
                 unit="°"
                 detail={
-                  primaryTransfer?.valveRelationship === "overlap"
-                    ? "Positive overlap"
-                    : primaryTransfer?.valveRelationship === "gap"
-                      ? "Negative value is a gap"
-                      : "Rotary induction only"
+                  analysis.rotary?.signedTransferMarginUncertainty
+                    ? `${formatSigned(analysis.rotary.signedTransferMarginUncertainty.minimumDeg, 1)}° to ${formatSigned(analysis.rotary.signedTransferMarginUncertainty.maximumDeg, 1)}° measurement bounds`
+                    : analysis.rotary?.transferRelationship === "overlap"
+                      ? "Positive overlap"
+                      : analysis.rotary?.transferRelationship === "gap"
+                        ? "Negative value is a gap"
+                        : analysis.rotary?.transferRelationship === "indeterminate"
+                          ? "Measurement bounds cross zero"
+                          : "Rotary induction only"
                 }
               />
             </div>
@@ -2295,6 +3575,160 @@ export function EngineWorkbench() {
               itself predict flow direction, pressure behaviour, power or safety.
             </p>
           </section>
+
+          <section className="print-input-summary" aria-label="Authoritative project inputs">
+            <div className="print-section-heading">
+              <h2>Authoritative project inputs</h2>
+              <p>Original editable measurements used to generate this report.</p>
+            </div>
+            <dl className="print-geometry-grid">
+              <div>
+                <dt>Bore</dt>
+                <dd>{formatSourceValue(project.geometry.boreMm, "mm")}</dd>
+              </div>
+              <div>
+                <dt>Stroke</dt>
+                <dd>{formatSourceValue(project.geometry.strokeMm, "mm")}</dd>
+              </div>
+              <div>
+                <dt>Connecting rod</dt>
+                <dd>{formatSourceValue(project.geometry.rodLengthMm, "mm")}</dd>
+              </div>
+              <div>
+                <dt>Deck position</dt>
+                <dd>{formatSourceValue(project.geometry.deckPositionMm, "mm")}</dd>
+              </div>
+              <div>
+                <dt>Engine speed</dt>
+                <dd>{formatSourceValue(project.geometry.rpm, "RPM")}</dd>
+              </div>
+              <div>
+                <dt>Cylinder lift</dt>
+                <dd>
+                  {formatSourceValue(
+                    project.compression.baseSpacerThicknessMm,
+                    "mm",
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>Displacement</dt>
+                <dd>{formatNumber(analysis.displacementCc, 2)} cc</dd>
+              </div>
+              <div>
+                <dt>Mean piston speed</dt>
+                <dd>{formatNumber(analysis.meanPistonSpeedMps, 2)} m/s</dd>
+              </div>
+            </dl>
+
+            <h3>Port measurements</h3>
+            <div className="table-scroll">
+              <table className="data-table print-source-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Event</th>
+                    <th scope="col">Source measurement</th>
+                    <th scope="col">Window</th>
+                    <th scope="col">Uncertainty</th>
+                    <th scope="col">Calculated timing</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {project.ports.map((port) => {
+                    const calculated = analysis.ports.find(
+                      (candidate) => candidate.id === port.id,
+                    );
+                    return (
+                      <tr key={port.id}>
+                        <th scope="row">
+                          {port.label}
+                          {!port.enabled ? (
+                            <small className="table-sublabel">disabled</small>
+                          ) : null}
+                        </th>
+                        <td>
+                          {sourceLabel(port.sourceMode)}: {formatSourceValue(
+                            port.sourceValue,
+                            sourceUnits[port.sourceMode],
+                          )}
+                        </td>
+                        <td>
+                          {port.widthMm && port.heightMm && port.count
+                            ? `${port.widthMm} × ${port.heightMm} mm × ${port.count}`
+                            : "Not set"}
+                        </td>
+                        <td>
+                          {port.uncertaintyMm
+                            ? `±${port.uncertaintyMm} mm`
+                            : "Not set"}
+                        </td>
+                        <td>
+                          {calculated
+                            ? `${formatNumber(calculated.openingAngleDeg, 2)}° ATDC / ${formatNumber(calculated.durationDeg, 2)}° duration`
+                            : "Unavailable"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="print-induction-summary">
+              <h3>Induction source</h3>
+              <dl>
+                <div>
+                  <dt>Mode</dt>
+                  <dd>{project.induction.mode}</dd>
+                </div>
+                <div>
+                  <dt>Timing source</dt>
+                  <dd>
+                    {project.induction.mode === "rotary"
+                      ? project.induction.timingSource === "crank-and-case-arcs"
+                        ? "Arc sizing solver"
+                        : "Timing only"
+                      : "Not applicable"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Desired timing</dt>
+                  <dd>
+                    {project.induction.mode === "rotary"
+                      ? `${formatSourceValue(project.induction.advanceBtdcDeg, "° BTDC")} / ${formatSourceValue(project.induction.delayAtdcDeg, "° ATDC")}`
+                      : "Not applicable"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Arc geometry</dt>
+                  <dd>
+                    {project.induction.mode === "rotary"
+                      ? analysis.induction.geometry
+                        ? `Ø ${formatNumber(analysis.induction.geometry.crankshaftDiameterMm, 2)} mm; crank ${formatNumber(analysis.induction.geometry.crankCutawayArcMm, 2)} mm; case ${formatNumber(analysis.induction.geometry.crankcaseWindowArcMm, 2)} mm; ${analysis.induction.geometry.measuredArc === "crank-cutaway" ? "crank measured" : "case measured"}`
+                        : `Ø ${formatSourceValue(project.induction.crankshaftDiameterMm, "mm")}; ${project.induction.measuredArc === "crank-cutaway" ? "crank" : "case"} measured ${formatSourceValue(project.induction.measuredArcMm, "mm")}; complement unavailable`
+                      : "Not applicable"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Inlet area source</dt>
+                  <dd>
+                    {project.induction.areaSource === "cylindrical-overlap"
+                      ? `Arc overlap, ${formatSourceValue(project.induction.commonAxialOverlapWidthMm, "mm axial width")}`
+                      : `Constant estimate, ${formatSourceValue(project.induction.effectiveWindowAreaMm2, "mm²")}`}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Character context</dt>
+                  <dd>
+                    {characterProfileOptions.find(
+                      (profile) => profile.value === project.character.profile,
+                    )?.label ?? "No profile"}
+                    {` · ${project.character.rpmMinimum}-${project.character.rpmMaximum} RPM · ${project.character.referenceSetVersion}`}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          </section>
           </div>
 
           <header className="mobile-results-context">
@@ -2309,6 +3743,8 @@ export function EngineWorkbench() {
             <a href="#timing-results">Timing</a>
             <a href="#head-results">Compression & squish</a>
             <a href="#flow-results">Time-area</a>
+            <a href="#character-results">Character</a>
+            <a href="#diagnostic-results">Diagnostics</a>
             <a href="#methodology">Method</a>
           </nav>
 
@@ -2416,19 +3852,37 @@ export function EngineWorkbench() {
                 <div>
                   <span className="relation-label">Rotary inlet to transfers</span>
                   <strong>
-                    {primaryTransfer?.valveMarginDeg === null ||
-                    primaryTransfer?.valveMarginDeg === undefined
+                    {analysis.rotary?.signedTransferMarginDeg === null ||
+                    analysis.rotary?.signedTransferMarginDeg === undefined
                       ? "Not applicable"
-                      : `${formatSigned(primaryTransfer.valveMarginDeg, 1)}° margin`}
+                      : `${formatSigned(analysis.rotary.signedTransferMarginDeg, 1)}° margin`}
                   </strong>
                   <p>
-                    {primaryTransfer?.valveRelationship === "overlap"
-                      ? "The inlet opens before the selected transfer event has closed."
-                      : primaryTransfer?.valveRelationship === "gap"
-                        ? "The transfer closes before the inlet opens."
-                        : primaryTransfer?.valveRelationship === "coincident"
-                          ? "The two boundaries coincide geometrically."
+                    {analysis.rotary?.transferRelationship === "overlap"
+                      ? "The inlet opens before at least one transfer has closed."
+                      : analysis.rotary?.transferRelationship === "gap"
+                        ? "Every transfer closes before the inlet opens."
+                        : analysis.rotary?.transferRelationship === "coincident"
+                          ? "The final transfer closure and inlet opening coincide."
+                          : analysis.rotary?.transferRelationship === "indeterminate"
+                            ? "The measurement bounds cross zero, so overlap versus gap is indeterminate."
                           : "Fixed timing is available only for rotary induction."}
+                  </p>
+                </div>
+              </article>
+              <article className="relation-card">
+                <div>
+                  <span className="relation-label">Rotary inlet closing</span>
+                  <strong>
+                    {analysis.rotary
+                      ? `${formatNumber(analysis.rotary.inletCloseAfterTdcDeg, 1)}° ATDC`
+                      : "Not applicable"}
+                  </strong>
+                  <p>
+                    {analysis.rotary?.inletCloseAfterTdcMs === null ||
+                    analysis.rotary?.inletCloseAfterTdcMs === undefined
+                      ? "Set RPM to see time after TDC."
+                      : `${formatNumber(analysis.rotary.inletCloseAfterTdcMs, 2)} ms after TDC, analysed separately from opening overlap.`}
                   </p>
                 </div>
               </article>
@@ -2450,7 +3904,89 @@ export function EngineWorkbench() {
                   <p>Difference between earliest and latest enabled transfer opening.</p>
                 </div>
               </article>
+              <article className="relation-card">
+                <div>
+                  <span className="relation-label">Rotary and transfers</span>
+                  <strong>
+                    {formatNumber(analysis.rotary?.unionTransferOverlapDeg, 1)}°
+                  </strong>
+                  <p>
+                    Union overlap across every enabled transfer, counted once.
+                  </p>
+                </div>
+              </article>
             </div>
+
+            <div className="blowdown-family" aria-label="Complete blowdown result">
+              <div>
+                <span>Crank interval</span>
+                <strong>
+                  {formatBoundedMeasure(
+                    analysis.timing.globalBlowdownDeg,
+                    analysis.timing.uncertainty?.globalBlowdownMinDeg,
+                    analysis.timing.uncertainty?.globalBlowdownMaxDeg,
+                    "°",
+                    2,
+                  )}
+                </strong>
+              </div>
+              <div>
+                <span>Elapsed at {project.geometry.rpm || "set RPM"}</span>
+                <strong>
+                  {formatBoundedMeasure(
+                    analysis.timing.globalBlowdownMs,
+                    analysis.timing.uncertainty?.globalBlowdownMinMs,
+                    analysis.timing.uncertainty?.globalBlowdownMaxMs,
+                    " ms",
+                    3,
+                  )}
+                </strong>
+              </div>
+              <div>
+                <span>Exhaust angle-area</span>
+                <strong>
+                  {formatBoundedMeasure(
+                    analysis.timing.blowdownAngleAreaMm2Deg,
+                    analysis.timing.uncertainty?.blowdownAngleAreaMinMm2Deg,
+                    analysis.timing.uncertainty?.blowdownAngleAreaMaxMm2Deg,
+                    " mm²·deg",
+                    0,
+                  )}
+                </strong>
+              </div>
+              <div>
+                <span>Geometric specific time-area</span>
+                <strong>
+                  {formatTimeArea(analysis.timing.blowdownSpecificTimeArea)}
+                  {analysis.timing.blowdownSpecificTimeArea === null
+                    ? ""
+                    : " s·mm²/cc"}
+                </strong>
+                {analysis.timing.uncertainty?.blowdownSpecificTimeAreaMin !==
+                  null &&
+                analysis.timing.uncertainty?.blowdownSpecificTimeAreaMin !==
+                  undefined &&
+                analysis.timing.uncertainty?.blowdownSpecificTimeAreaMax !==
+                  null &&
+                analysis.timing.uncertainty?.blowdownSpecificTimeAreaMax !==
+                  undefined ? (
+                  <small>
+                    {formatTimeArea(
+                      analysis.timing.uncertainty
+                        .blowdownSpecificTimeAreaMin,
+                    )} to {formatTimeArea(
+                      analysis.timing.uncertainty
+                        .blowdownSpecificTimeAreaMax,
+                    )}
+                  </small>
+                ) : null}
+              </div>
+            </div>
+            <p className="model-note blowdown-boundary">
+              Blowdown uses exhaust opening to the earliest enabled transfer
+              opening. Degrees describe event order; angle-area and specific
+              time-area describe geometric opportunity, not sufficient flow.
+            </p>
 
             {analysis.transfers.length ? (
               <div className="table-scroll relation-table-wrap">
@@ -2500,15 +4036,14 @@ export function EngineWorkbench() {
                 <div>
                   <span className="evidence-level calculation">
                     {analysis.rotary?.source === "crank-and-case-arcs"
-                      ? "Active geometry source"
-                      : "Geometry comparison"}
+                      ? "Active arc sizing"
+                      : "Optional arc sizing"}
                   </span>
                   <h3>Crank web and crankcase opening</h3>
                   <p>
-                    Each circumferential length is converted at the entered
-                    timing-track diameter. Their angular widths add to the idealised
-                    inlet duration; the measured anchor fixes its position around
-                    TDC.
+                    Desired opening and closing define the total circumferential
+                    length at the entered diameter. One physical arc is measured;
+                    the other is calculated automatically without changing timing.
                   </p>
                 </div>
                 <RotaryArcConversion analysis={analysis} />
@@ -2640,7 +4175,7 @@ export function EngineWorkbench() {
           <section className="result-section card-light" id="flow-results">
             <SectionHeading
               title="Time-area"
-              detail="Idealised rectangular projected area integrated over crank angle at the selected RPM."
+              detail="Disclosed geometric area models integrated over crank angle at the selected RPM."
             />
             <div className="table-scroll">
               <table className="data-table">
@@ -2673,14 +4208,16 @@ export function EngineWorkbench() {
                   {analysis.rotary ? (
                     <tr>
                       <th scope="row">Rotary inlet estimate</th>
+                      <td>{formatNumber(analysis.rotary.maximumOpenAreaMm2, 1)} mm²</td>
+                      <td>{formatNumber(analysis.rotary.overlapAngleAreaMm2Deg, 0)} mm²·deg</td>
+                      <td>{formatTimeArea(analysis.rotary.overlapSpecificTimeArea)} s·mm²/cc</td>
                       <td>
-                        {project.induction.effectiveWindowAreaMm2
-                          ? `${project.induction.effectiveWindowAreaMm2} mm²`
-                          : "Not set"}
+                        {analysis.rotary.areaModel === "cylindrical-overlap"
+                          ? "Crank-to-case arc overlap"
+                          : analysis.rotary.areaModel === "constant-area"
+                            ? "Constant-area approximation"
+                            : "Unavailable"}
                       </td>
-                      <td>{formatNumber(analysis.rotary.idealisedAngleAreaMm2Deg, 0)} mm²·deg</td>
-                      <td>{formatTimeArea(analysis.rotary.idealisedSpecificTimeArea)} s·mm²/cc</td>
-                      <td>Constant effective area</td>
                     </tr>
                   ) : null}
                 </tbody>
@@ -2692,6 +4229,10 @@ export function EngineWorkbench() {
               discharge coefficient, pressure and gas dynamics are excluded.
             </p>
           </section>
+
+          <EngineCharacterEstimate analysis={analysis} project={project} />
+
+          <DiagnosticLevels analysis={analysis} />
 
           {scenarioEffects.length ? (
             <section className="result-section">
@@ -2735,104 +4276,46 @@ export function EngineWorkbench() {
             />
             <div className="evidence-grid">
               <article>
-                <span className="evidence-level calculation">Calculated</span>
-                <h3>Deterministic geometry</h3>
+                <span className="evidence-level calculated-geometry">
+                  Calculated geometry
+                </span>
+                <h3>Exact within the stated model</h3>
                 <p>
-                  Millimetre-to-degree conversion, durations, overlaps, compression
-                  volumes, squish geometry and idealised time-area follow the inputs
-                  and stated equations.
+                  Millimetre-to-degree conversion, event order, signed margins,
+                  compression geometry and disclosed area integrals follow the
+                  current inputs and equations.
                 </p>
               </article>
               <article>
-                <span className="evidence-level documented">Documented reference</span>
-                <h3>Source-specific limits</h3>
+                <span className="evidence-level profile-heuristic">
+                  Profile heuristic
+                </span>
+                <h3>Conditional context</h3>
                 <p>
-                  Manufacturer clearance limits belong here. The calculator never
-                  turns a generic forum number into a universal safe target.
+                  Touring box, sport box, road expansion and race expansion alter
+                  only the interpretation lens. They never change geometry or
+                  become universal tuning targets.
                 </p>
               </article>
               <article>
-                <span className="evidence-level hypothesis">Tuning hypothesis</span>
-                <h3>Requires physical verification</h3>
+                <span className="evidence-level measured-or-modelled">
+                  Measured or modelled
+                </span>
+                <h3>Provenance required</h3>
                 <p>
-                  Power, torque, temperature, detonation margin and flow direction
-                  require engine-specific evidence, measurement and responsible testing.
+                  Measurement bounds and geometric area models name their source
+                  and exclusions. Real engine behaviour still requires degree-wheel,
+                  road or dyno verification.
                 </p>
               </article>
             </div>
+            <div className="print-method-details">
+              <h3>Equations, measurement conventions and model limits</h3>
+              <MethodologyDetailsContent />
+            </div>
             <details className="method-details">
               <summary>Equations, measurement conventions and model limits</summary>
-              <div className="method-copy">
-                <p>
-                  The centred slider-crank equation uses crank radius, centre-to-centre
-                  rod length and crank angle. Port opening is solved exactly from piston
-                  travel; symmetric closure is 360° minus the opening angle.
-                </p>
-                <p>
-                  A positive rotary-to-transfer margin means the rotary inlet opens
-                  before the selected transfer closes. A negative value is a closed
-                  angular gap. This signed relationship is shown instead of claiming a
-                  universal ratio between inlet and transfer durations.
-                </p>
-                <p>
-                  Rotary arc conversion uses θ = 360L / (πD). The crank cut-away
-                  width and crankcase opening width add to the duration of idealised
-                  circumferential overlap. Those lengths do not locate the event
-                  relative to TDC, so one measured opening or closing edge remains
-                  authoritative.
-                </p>
-                <p>
-                  Geometric compression uses full displacement. Trapped compression
-                  uses only the swept volume from exhaust closure to TDC. Raising the
-                  exhaust roof can therefore reduce trapped compression while leaving
-                  geometric compression unchanged, provided the chamber volume is unchanged.
-                </p>
-              </div>
-              <div className="source-links">
-                <span>Reference trail</span>
-                <a
-                  href="https://catalogue.polini.com/dep/PI702.pdf"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Polini PP18 conversion table
-                </a>
-                <a
-                  href="https://saemobilus.sae.org/papers/effect-crankcase-volume-inlet-system-delivery-ratio-two-stroke-cycle-engines-670030"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  SAE 670030 on inlet time-area
-                </a>
-                <a
-                  href="https://patents.google.com/patent/US20050139179A1/en"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Crank-web rotary timing reference
-                </a>
-                <a
-                  href="https://catalogue.polini.com/dep/210_0043.pdf"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Polini Vespa rotary crank instructions
-                </a>
-                <a
-                  href="https://saemobilus.sae.org/papers/relationship-port-shape-engine-performance-two-stroke-engines-1999-01-3333"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  SAE 1999-01-3333 on transfer shape
-                </a>
-                <a
-                  href="https://api.sip-scootershop.com/api/files/download/1/pdf/fd38cfbd-e197-4fe7-9c64-4904a6cdf2a3/SIP%2BBFA%2BEngine%2BInstructions.pdf"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  SIP-BFA kit-specific squish guidance
-                </a>
-              </div>
+              <MethodologyDetailsContent />
             </details>
           </section>
 

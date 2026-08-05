@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 async function render() {
@@ -35,15 +36,52 @@ test("server-renders the complete calculator shell", async () => {
   assert.match(html, /Vespa 51 mm study/);
   assert.match(html, /Live slider-crank geometry across one complete crankshaft cycle\./);
   assert.match(html, /360° timing map/);
+  assert.match(html, />Print</);
+  assert.match(html, /Project report/);
+  assert.match(html, /Project code/);
+  assert.match(html, /Project date/);
+  assert.match(html, /Engine details/);
+  assert.match(html, /Two-stroke timing report/);
+  assert.match(html, /Authoritative project inputs/);
+  assert.match(html, /Port measurements/);
+  assert.match(html, /Generated/);
   assert.match(html, /Cylinder lift study/);
   assert.match(html, /Installed cylinder lift/);
-  assert.match(html, /aria-label="Rotary timing source"/);
-  assert.match(html, /Crank &amp; case arcs/);
-  assert.match(html, /Rotary arc timing model/);
+  assert.match(html, /aria-label="Rotary calculation mode"/);
+  assert.match(html, /Size physical arcs/);
+  assert.match(html, /Rotary geometry solver/);
+  assert.match(html, /Desired inlet opening/);
+  assert.match(html, /Desired inlet closing/);
   assert.match(html, /Valve timing-track diameter/);
-  assert.match(html, /Crank cut-away arc/);
-  assert.match(html, /Crankcase opening arc/);
-  assert.match(html, /Arc-to-angle conversion/);
+  assert.match(html, /Diameter uncertainty/);
+  assert.match(html, /aria-label="Manual arc measurement"/);
+  assert.match(html, /Measured crank cut-away arc/);
+  assert.match(html, /Measured arc uncertainty/);
+  assert.match(html, /Calculated crankcase valve opening/);
+  assert.match(html, /Solved arc geometry/);
+  assert.match(html, /aria-label="Rotary inlet area source"/);
+  assert.match(html, /Common axial overlap width/);
+  assert.match(html, /Axial width uncertainty/);
+  assert.match(html, /Interpretation profile/);
+  assert.match(html, /Touring box/);
+  assert.match(html, /Sport box/);
+  assert.match(html, /Road expansion/);
+  assert.match(html, /Race expansion/);
+  assert.match(html, /Engine character estimate/);
+  assert.match(html, /Rotary inlet opening area/);
+  assert.match(html, /Specific time-area across RPM/);
+  assert.match(html, /Character signature/);
+  assert.match(html, /RPM \/ speed emphasis/);
+  assert.match(html, /Low-speed response/);
+  assert.match(html, /Useful-band breadth/);
+  assert.match(html, /Over-rev tendency/);
+  assert.match(html, /Nominal marker/);
+  assert.match(html, /Measurement range/);
+  assert.match(html, /\/100 nominal/);
+  assert.match(html, /Diagnostic levels/);
+  assert.match(html, /Calculated geometry/);
+  assert.match(html, /Profile heuristic/);
+  assert.match(html, /Measured or modelled/);
   assert.match(html, /Compression/);
   assert.match(html, /Squish geometry/);
   assert.match(html, /Time-area/);
@@ -59,14 +97,36 @@ test("renders accessible controls and explicit interpretation limits", async () 
   assert.match(html, /aria-labelledby="engine-setup-heading"/);
   assert.match(html, /aria-label="Calculated results"/);
   assert.match(html, /aria-label="Induction mode"/);
-  assert.match(html, /aria-label="Rotary geometry phase anchor"/);
+  assert.match(html, /aria-live="polite"/);
   assert.match(html, /Measure along the arc, not as a\s+straight chord/i);
-  assert.match(html, /one measured opening or closing edge remains\s+authoritative/i);
+  assert.match(html, /one physical arc is measured; the other\s+is calculated/i);
   assert.match(html, /aria-label="Adjust cylinder lift in 0.1 millimetre steps"/);
   assert.match(html, /Increase cylinder lift by 0.1 millimetres/);
   assert.match(html, /stroke and\s+rod length stay unchanged/i);
   assert.match(html, /Assembled no-spacer baseline volume above the piston at TDC/);
   assert.match(html, /simultaneous geometric opening only/);
+  assert.match(html, /analysed separately from opening overlap/i);
+  assert.match(html, /Geometric specific time-area/);
+  assert.match(html, /measurement bounds/i);
+  assert.match(html, /not a dyno curve/i);
+  assert.match(html, /tendencies, not torque, power or a safe engine-speed limit/i);
   assert.match(html, /not a dynamic pressure or detonation prediction/);
   assert.match(html, /No universal safe squish target is applied/);
+});
+
+test("keeps character graph values visible in the print report", async () => {
+  const css = await readFile(
+    new URL("../app/globals.css", import.meta.url),
+    "utf8",
+  );
+  const printStyles = css.slice(css.indexOf("@media print"));
+
+  assert.match(
+    printStyles,
+    /\.chart-data-disclosure\s*\{[^}]*display:\s*block;/su,
+  );
+  assert.match(
+    printStyles,
+    /\.chart-data-disclosure:not\(\[open\]\)\s*>\s*\.table-scroll/su,
+  );
 });

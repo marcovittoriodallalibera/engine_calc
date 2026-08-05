@@ -5,13 +5,15 @@ import {
   degreesAtRpmToMilliseconds,
   displacement,
   geometricCompressionRatio,
+  ENGINE_CHARACTER_PROFILES,
   integrateRectangularPortAngleArea,
+  integrateRotaryOverlapArea,
   intakeTransferMargin,
   meanPistonSpeed,
+  modelEngineCharacter,
   pistonTravelFromTdc,
+  resolveRotaryValveArcGeometry,
   rotaryValveTiming,
-  rotaryValveDurationFromArcGeometry,
-  rotaryValveTimingFromArcGeometry,
   specificTimeArea,
   splitCircularInterval,
   squishGapStatistics,
@@ -21,10 +23,12 @@ import {
   targetClearanceVolumeForTrappedRatio,
   trappedCompressionRatio,
   type CircularInterval,
+  type EngineCharacterResult,
   type LinearAngleSegment,
   type SymmetricPortTiming,
 } from "../engine/index.ts";
 import {
+  PROFILE_REFERENCE_SET_VERSION,
   parseLocaleNumber,
   type EngineProjectDraft,
   type PortDraft,
@@ -56,6 +60,10 @@ export interface PortAnalysis {
     openingMaxDeg: number;
     durationMinDeg: number;
     durationMaxDeg: number;
+    angleAreaMinMm2Deg: number | null;
+    angleAreaMaxMm2Deg: number | null;
+    specificTimeAreaMin: number | null;
+    specificTimeAreaMax: number | null;
   } | null;
   diagnostics: string[];
 }
@@ -69,7 +77,57 @@ export interface TransferAnalysis {
   valveOverlapDeg: number | null;
   valveOverlapMs: number | null;
   valveMarginDeg: number | null;
+  valveMarginUncertainty: {
+    minimumDeg: number;
+    maximumDeg: number;
+  } | null;
   valveRelationship: "overlap" | "gap" | "coincident" | "not-applicable";
+}
+
+export type AnalysisEvidenceLevel =
+  | "calculated-geometry"
+  | "profile-heuristic"
+  | "measured-or-modelled";
+
+export interface AnalysisAdvisory {
+  id: string;
+  evidence: AnalysisEvidenceLevel;
+  tone: "neutral" | "caution" | "strong";
+  title: string;
+  message: string;
+  sourceLabel?: string;
+  sourceUrl?: string;
+}
+
+export interface DeterministicMeasurementBounds {
+  nominal: number;
+  minimum: number;
+  maximum: number;
+}
+
+export interface MeasurementBoundsProvenance {
+  method: "deterministic-worst-case";
+  inputs: string[];
+  statement: string;
+}
+
+export interface RotaryGeometryUncertainty {
+  timingTrackDiameterMm: DeterministicMeasurementBounds;
+  circumferenceMm: DeterministicMeasurementBounds;
+  measuredArcMm: DeterministicMeasurementBounds;
+  derivedArcMm: DeterministicMeasurementBounds;
+  crankCutawayArcMm: DeterministicMeasurementBounds;
+  crankcaseWindowArcMm: DeterministicMeasurementBounds;
+  provenance: MeasurementBoundsProvenance;
+}
+
+export interface RotaryAreaUncertainty {
+  crankcaseWindowAreaMm2: DeterministicMeasurementBounds;
+  maximumOpenAreaMm2: DeterministicMeasurementBounds;
+  meanOpenAreaMm2: DeterministicMeasurementBounds;
+  overlapAngleAreaMm2Deg: DeterministicMeasurementBounds;
+  overlapSpecificTimeArea: DeterministicMeasurementBounds | null;
+  provenance: MeasurementBoundsProvenance;
 }
 
 export interface RotaryInductionAnalysis {
@@ -89,11 +147,13 @@ export interface RotaryInductionAnalysis {
     crankcaseWindowDeg: number;
     combinedArcMm: number;
     durationDeg: number;
-    anchor: EngineProjectDraft["induction"]["arcAnchor"];
-    anchorAngleDeg: number | null;
-    advanceBeforeTdcDeg: number | null;
-    delayAfterTdcDeg: number | null;
-    directDurationDifferenceDeg: number | null;
+    measuredArc: EngineProjectDraft["induction"]["measuredArc"];
+    measuredArcMm: number;
+    derivedArcMm: number;
+    advanceBeforeTdcDeg: number;
+    delayAfterTdcDeg: number;
+    uncertainty: RotaryGeometryUncertainty | null;
+    uncertaintyStatus: "not-entered" | "available" | "outside-domain";
   } | null;
 }
 
@@ -115,10 +175,37 @@ interface EngineProjectAnalysisCore {
     unionTransferOverlapDeg: number;
     unionTransferOverlapMs: number | null;
     unionTransferOverlapSegments: LinearAngleSegment[];
+    signedTransferMarginDeg: number | null;
+    signedTransferMarginUncertainty: {
+      minimumDeg: number;
+      maximumDeg: number;
+    } | null;
+    transferRelationship:
+      | "overlap"
+      | "gap"
+      | "coincident"
+      | "indeterminate"
+      | "not-applicable";
     tripleOverlapDeg: number;
     tripleOverlapSegments: LinearAngleSegment[];
-    idealisedAngleAreaMm2Deg: number | null;
-    idealisedSpecificTimeArea: number | null;
+    inletCloseAfterTdcDeg: number;
+    inletCloseAfterTdcMs: number | null;
+    areaModel:
+      | "cylindrical-overlap"
+      | "constant-area"
+      | "unavailable";
+    crankcaseWindowAreaMm2: number | null;
+    maximumOpenAreaMm2: number | null;
+    meanOpenAreaMm2: number | null;
+    overlapAngleAreaMm2Deg: number | null;
+    overlapSpecificTimeArea: number | null;
+    areaUncertainty: RotaryAreaUncertainty | null;
+    areaSamples: Array<{
+      elapsedDeg: number;
+      openAreaMm2: number;
+      minimumOpenAreaMm2: number | null;
+      maximumOpenAreaMm2: number | null;
+    }>;
   } | null;
   timing: {
     globalBlowdownDeg: number | null;
@@ -128,7 +215,35 @@ interface EngineProjectAnalysisCore {
     exhaustTransferUnionOverlapSegments: LinearAngleSegment[];
     blowdownAngleAreaMm2Deg: number | null;
     blowdownSpecificTimeArea: number | null;
+    uncertainty: {
+      globalBlowdownMinDeg: number;
+      globalBlowdownMaxDeg: number;
+      globalBlowdownMinMs: number | null;
+      globalBlowdownMaxMs: number | null;
+      blowdownAngleAreaMinMm2Deg: number | null;
+      blowdownAngleAreaMaxMm2Deg: number | null;
+      blowdownSpecificTimeAreaMin: number | null;
+      blowdownSpecificTimeAreaMax: number | null;
+    } | null;
   };
+  character: EngineCharacterResult | null;
+  characterGeometry: {
+    rpmMinimum: number;
+    rpmMaximum: number;
+    rpmStep: number;
+    series: Array<{
+      id: string;
+      label: string;
+      colour: string;
+      source: "full-event" | "blowdown" | "rotary-inlet";
+      samples: Array<{
+        rpm: number;
+        specificTimeArea: number;
+        minimum: number | null;
+        maximum: number | null;
+      }>;
+    }>;
+  } | null;
   compression: {
     clearanceVolumeMode: "measured-total" | "component-breakdown";
     geometricRatio: number | null;
@@ -157,6 +272,7 @@ interface EngineProjectAnalysisCore {
     belowManufacturerMinimum: boolean | null;
   };
   diagnostics: string[];
+  advisories: AnalysisAdvisory[];
 }
 
 export interface CylinderLiftPortComparison {
@@ -207,7 +323,363 @@ function diagnosticMessages(
 
 function durationMs(degrees: number, rpm: number | null): number | null {
   if (rpm === null) return null;
-  return degreesAtRpmToMilliseconds(degrees, rpm).value?.milliseconds ?? null;
+  const sign = Math.sign(degrees);
+  const milliseconds = degreesAtRpmToMilliseconds(
+    Math.abs(degrees),
+    rpm,
+  ).value?.milliseconds;
+  return milliseconds === undefined ? null : milliseconds * sign;
+}
+
+const deterministicBoundsStatement =
+  "These are deterministic worst-case limits from the entered plus-or-minus measurement bounds. No probability distribution, confidence interval or statistical coverage is implied.";
+
+function measurementBounds(
+  nominal: number,
+  minimum: number,
+  maximum: number,
+): DeterministicMeasurementBounds {
+  return { nominal, minimum, maximum };
+}
+
+function positiveEnteredUncertainty(value: string): number {
+  const parsed = parseLocaleNumber(value);
+  return parsed !== null && parsed > 0 ? parsed : 0;
+}
+
+function resolveRotaryGeometryUncertainty(input: {
+  timingTrackDiameterMm: number;
+  timingTrackDiameterUncertaintyMm: number;
+  measuredArcMm: number;
+  measuredArcUncertaintyMm: number;
+  measuredArc: EngineProjectDraft["induction"]["measuredArc"];
+  durationDeg: number;
+  nominalDerivedArcMm: number;
+  nominalCrankCutawayArcMm: number;
+  nominalCrankcaseWindowArcMm: number;
+}): {
+  status: "not-entered" | "available" | "outside-domain";
+  value: RotaryGeometryUncertainty | null;
+  diagnostic: string | null;
+} {
+  const requested =
+    input.timingTrackDiameterUncertaintyMm > 0 ||
+    input.measuredArcUncertaintyMm > 0;
+  if (!requested) {
+    return { status: "not-entered", value: null, diagnostic: null };
+  }
+
+  const diameterMinimum =
+    input.timingTrackDiameterMm - input.timingTrackDiameterUncertaintyMm;
+  const diameterMaximum =
+    input.timingTrackDiameterMm + input.timingTrackDiameterUncertaintyMm;
+  const measuredMinimum = input.measuredArcMm - input.measuredArcUncertaintyMm;
+  const measuredMaximum = input.measuredArcMm + input.measuredArcUncertaintyMm;
+  const durationFraction = input.durationDeg / 360;
+  const circumferenceMinimum = Math.PI * diameterMinimum;
+  const circumferenceMaximum = Math.PI * diameterMaximum;
+  const derivedMinimum =
+    circumferenceMinimum * durationFraction - measuredMaximum;
+  const derivedMaximum =
+    circumferenceMaximum * durationFraction - measuredMinimum;
+
+  if (
+    diameterMinimum <= 0 ||
+    measuredMinimum <= 0 ||
+    derivedMinimum <= 0 ||
+    !Number.isFinite(derivedMaximum)
+  ) {
+    return {
+      status: "outside-domain",
+      value: null,
+      diagnostic:
+        "Rotary diameter or arc measurement bounds leave the positive complementary-arc domain. Nominal geometry remains available, but no rotary uncertainty range is reported.",
+    };
+  }
+
+  const measured = measurementBounds(
+    input.measuredArcMm,
+    measuredMinimum,
+    measuredMaximum,
+  );
+  const derived = measurementBounds(
+    input.nominalDerivedArcMm,
+    derivedMinimum,
+    derivedMaximum,
+  );
+  const crankCutaway =
+    input.measuredArc === "crank-cutaway" ? measured : derived;
+  const crankcaseWindow =
+    input.measuredArc === "crankcase-opening" ? measured : derived;
+  const inputs: string[] = [];
+  if (input.timingTrackDiameterUncertaintyMm > 0) {
+    inputs.push("rotary sealing-track diameter");
+  }
+  if (input.measuredArcUncertaintyMm > 0) {
+    inputs.push(
+      input.measuredArc === "crank-cutaway"
+        ? "measured crank cut-away arc"
+        : "measured crankcase opening arc",
+    );
+  }
+
+  return {
+    status: "available",
+    diagnostic: null,
+    value: {
+      timingTrackDiameterMm: measurementBounds(
+        input.timingTrackDiameterMm,
+        diameterMinimum,
+        diameterMaximum,
+      ),
+      circumferenceMm: measurementBounds(
+        Math.PI * input.timingTrackDiameterMm,
+        circumferenceMinimum,
+        circumferenceMaximum,
+      ),
+      measuredArcMm: measured,
+      derivedArcMm: derived,
+      crankCutawayArcMm: crankCutaway,
+      crankcaseWindowArcMm: crankcaseWindow,
+      provenance: {
+        method: "deterministic-worst-case",
+        inputs,
+        statement: deterministicBoundsStatement,
+      },
+    },
+  };
+}
+
+function resolveRotaryAreaUncertainty(input: {
+  geometry: NonNullable<RotaryInductionAnalysis["geometry"]>;
+  windowWidthMm: number;
+  windowWidthUncertaintyMm: number;
+  durationDeg: number;
+  rpm: number | null;
+  displacementCc: number | null;
+  nominal: {
+    crankcaseWindowAreaMm2: number;
+    maximumOpenAreaMm2: number;
+    meanOpenAreaMm2: number;
+    angleAreaMm2Deg: number;
+    samples: Array<{ elapsedDeg: number; openAreaMm2: number }>;
+  };
+}): {
+  value: RotaryAreaUncertainty | null;
+  samples: Array<{
+    elapsedDeg: number;
+    openAreaMm2: number;
+    minimumOpenAreaMm2: number | null;
+    maximumOpenAreaMm2: number | null;
+  }>;
+  diagnostic: string | null;
+} {
+  const geometryUncertainty = input.geometry.uncertainty;
+  const requested =
+    input.windowWidthUncertaintyMm > 0 ||
+    input.geometry.uncertaintyStatus !== "not-entered";
+  const nominalSamples = input.nominal.samples.map((sample) => ({
+    ...sample,
+    minimumOpenAreaMm2: null,
+    maximumOpenAreaMm2: null,
+  }));
+  if (!requested) {
+    return { value: null, samples: nominalSamples, diagnostic: null };
+  }
+  if (input.geometry.uncertaintyStatus === "outside-domain") {
+    return { value: null, samples: nominalSamples, diagnostic: null };
+  }
+
+  const widthMinimum = input.windowWidthMm - input.windowWidthUncertaintyMm;
+  const widthMaximum = input.windowWidthMm + input.windowWidthUncertaintyMm;
+  if (widthMinimum <= 0) {
+    return {
+      value: null,
+      samples: nominalSamples,
+      diagnostic:
+        "The common axial overlap-width bounds leave the positive-area domain. Nominal inlet area remains available, but no rotary area uncertainty range is reported.",
+    };
+  }
+
+  const diameter =
+    geometryUncertainty?.timingTrackDiameterMm ??
+    measurementBounds(
+      input.geometry.crankshaftDiameterMm,
+      input.geometry.crankshaftDiameterMm,
+      input.geometry.crankshaftDiameterMm,
+    );
+  const circumference =
+    geometryUncertainty?.circumferenceMm ??
+    measurementBounds(
+      input.geometry.circumferenceMm,
+      input.geometry.circumferenceMm,
+      input.geometry.circumferenceMm,
+    );
+  const measured =
+    geometryUncertainty?.measuredArcMm ??
+    measurementBounds(
+      input.geometry.measuredArcMm,
+      input.geometry.measuredArcMm,
+      input.geometry.measuredArcMm,
+    );
+  const derived =
+    geometryUncertainty?.derivedArcMm ??
+    measurementBounds(
+      input.geometry.derivedArcMm,
+      input.geometry.derivedArcMm,
+      input.geometry.derivedArcMm,
+    );
+  const crankCutaway =
+    input.geometry.measuredArc === "crank-cutaway" ? measured : derived;
+  const crankcaseWindow =
+    input.geometry.measuredArc === "crankcase-opening" ? measured : derived;
+  const durationFraction = input.durationDeg / 360;
+  const angleAreaWithoutWidth = (diameterMm: number, measuredArcMm: number) => {
+    const totalArcMm = Math.PI * diameterMm * durationFraction;
+    return (
+      measuredArcMm *
+      (totalArcMm - measuredArcMm) *
+      (360 / (Math.PI * diameterMm))
+    );
+  };
+  const minimumAreaBase = Math.min(
+    angleAreaWithoutWidth(diameter.minimum, measured.minimum),
+    angleAreaWithoutWidth(diameter.minimum, measured.maximum),
+  );
+  // For fixed diameter the measured-arc product is concave. Include its
+  // stationary point so the upper bound cannot miss a maximum inside the
+  // entered interval.
+  const stationaryMeasuredArc =
+    (Math.PI * diameter.maximum * durationFraction) / 2;
+  const maximumCandidateMeasuredArc = Math.max(
+    measured.minimum,
+    Math.min(measured.maximum, stationaryMeasuredArc),
+  );
+  const maximumAreaBase = angleAreaWithoutWidth(
+    diameter.maximum,
+    maximumCandidateMeasuredArc,
+  );
+  const angleAreaMinimum = widthMinimum * minimumAreaBase;
+  const angleAreaMaximum = widthMaximum * maximumAreaBase;
+
+  const maximumOverlapArc = (diameterMm: number, measuredArcMm: number) =>
+    Math.min(
+      measuredArcMm,
+      Math.PI * diameterMm * durationFraction - measuredArcMm,
+    );
+  const minimumOverlapArc = Math.min(
+    maximumOverlapArc(diameter.minimum, measured.minimum),
+    maximumOverlapArc(diameter.minimum, measured.maximum),
+  );
+  const maximumOverlapCandidate = Math.max(
+    measured.minimum,
+    Math.min(measured.maximum, stationaryMeasuredArc),
+  );
+  const maximumOverlapArcValue = maximumOverlapArc(
+    diameter.maximum,
+    maximumOverlapCandidate,
+  );
+  const maximumAreaMinimum = widthMinimum * minimumOverlapArc;
+  const maximumAreaMaximum = widthMaximum * maximumOverlapArcValue;
+  const crankcaseAreaMinimum =
+    widthMinimum * crankcaseWindow.minimum;
+  const crankcaseAreaMaximum =
+    widthMaximum * crankcaseWindow.maximum;
+  const meanAreaMinimum = angleAreaMinimum / input.durationDeg;
+  const meanAreaMaximum = angleAreaMaximum / input.durationDeg;
+  const specificDivisor =
+    input.rpm && input.displacementCc
+      ? 6 * input.rpm * input.displacementCc
+      : null;
+  const specificTimeAreaBounds = specificDivisor
+    ? measurementBounds(
+        input.nominal.angleAreaMm2Deg / specificDivisor,
+        angleAreaMinimum / specificDivisor,
+        angleAreaMaximum / specificDivisor,
+      )
+    : null;
+  const provenanceInputs = [
+    ...(geometryUncertainty?.provenance.inputs ?? []),
+    ...(input.windowWidthUncertaintyMm > 0
+      ? ["common axial overlap width"]
+      : []),
+  ];
+  const areaUncertainty: RotaryAreaUncertainty = {
+    crankcaseWindowAreaMm2: measurementBounds(
+      input.nominal.crankcaseWindowAreaMm2,
+      crankcaseAreaMinimum,
+      crankcaseAreaMaximum,
+    ),
+    maximumOpenAreaMm2: measurementBounds(
+      input.nominal.maximumOpenAreaMm2,
+      maximumAreaMinimum,
+      maximumAreaMaximum,
+    ),
+    meanOpenAreaMm2: measurementBounds(
+      input.nominal.meanOpenAreaMm2,
+      meanAreaMinimum,
+      meanAreaMaximum,
+    ),
+    overlapAngleAreaMm2Deg: measurementBounds(
+      input.nominal.angleAreaMm2Deg,
+      angleAreaMinimum,
+      angleAreaMaximum,
+    ),
+    overlapSpecificTimeArea: specificTimeAreaBounds,
+    provenance: {
+      method: "deterministic-worst-case",
+      inputs: provenanceInputs,
+      statement: deterministicBoundsStatement,
+    },
+  };
+
+  const boundedSamples = input.nominal.samples.map((sample) => {
+    const openingTravelMinimum =
+      (sample.elapsedDeg * circumference.minimum) / 360;
+    const openingTravelMaximum =
+      (sample.elapsedDeg * circumference.maximum) / 360;
+    const closingTravelMinimum =
+      ((input.durationDeg - sample.elapsedDeg) * circumference.minimum) / 360;
+    const closingTravelMaximum =
+      ((input.durationDeg - sample.elapsedDeg) * circumference.maximum) / 360;
+    const overlapMinimum = Math.max(
+      0,
+      Math.min(
+        openingTravelMinimum,
+        closingTravelMinimum,
+        crankCutaway.minimum,
+        crankcaseWindow.minimum,
+      ),
+    );
+    const overlapMaximum = Math.max(
+      0,
+      Math.min(
+        openingTravelMaximum,
+        closingTravelMaximum,
+        crankCutaway.maximum,
+        crankcaseWindow.maximum,
+      ),
+    );
+    const conservativeMinimum = Math.min(
+      sample.openAreaMm2,
+      widthMinimum * overlapMinimum,
+    );
+    const conservativeMaximum = Math.max(
+      sample.openAreaMm2,
+      Math.min(maximumAreaMaximum, widthMaximum * overlapMaximum),
+    );
+    return {
+      ...sample,
+      minimumOpenAreaMm2: conservativeMinimum,
+      maximumOpenAreaMm2: conservativeMaximum,
+    };
+  });
+
+  return {
+    value: areaUncertainty,
+    samples: boundedSamples,
+    diagnostic: null,
+  };
 }
 
 function analyseRotaryInduction(
@@ -234,32 +706,24 @@ function analyseRotaryInduction(
   const crankshaftDiameterMm = parseLocaleNumber(
     project.induction.crankshaftDiameterMm,
   );
-  const crankCutawayArcMm = parseLocaleNumber(project.induction.crankCutawayArcMm);
-  const crankcaseWindowArcMm = parseLocaleNumber(
-    project.induction.crankcaseWindowArcMm,
+  const measuredArcMm = parseLocaleNumber(project.induction.measuredArcMm);
+  const crankshaftDiameterUncertaintyMm = positiveEnteredUncertainty(
+    project.induction.crankshaftDiameterUncertaintyMm,
   );
-  const anchorAngleDeg = parseLocaleNumber(project.induction.arcAnchorAngleDeg);
-  const geometryDurationResult =
-    crankshaftDiameterMm !== null &&
-    crankCutawayArcMm !== null &&
-    crankcaseWindowArcMm !== null
-      ? rotaryValveDurationFromArcGeometry({
-          crankshaftDiameterMm,
-          crankCutawayArcMm,
-          crankcaseWindowArcMm,
-        })
-      : null;
+  const measuredArcUncertaintyMm = positiveEnteredUncertainty(
+    project.induction.measuredArcUncertaintyMm,
+  );
   const geometryResult =
+    advance !== null &&
+    delay !== null &&
     crankshaftDiameterMm !== null &&
-    crankCutawayArcMm !== null &&
-    crankcaseWindowArcMm !== null &&
-    anchorAngleDeg !== null
-      ? rotaryValveTimingFromArcGeometry({
+    measuredArcMm !== null
+      ? resolveRotaryValveArcGeometry({
+          advanceBeforeTdcDeg: advance,
+          delayAfterTdcDeg: delay,
           crankshaftDiameterMm,
-          crankCutawayArcMm,
-          crankcaseWindowArcMm,
-          anchor: project.induction.arcAnchor,
-          anchorAngleDeg,
+          measuredArc: project.induction.measuredArc,
+          measuredArcMm,
         })
       : null;
 
@@ -268,58 +732,69 @@ function analyseRotaryInduction(
       degreesToArcLength(direct.durationDeg, crankshaftDiameterMm).value
         ?.arcLengthMm ?? null;
   }
-  const geometry = geometryDurationResult?.value
+  const geometryUncertainty = geometryResult?.value
+    ? resolveRotaryGeometryUncertainty({
+        timingTrackDiameterMm: geometryResult.value.crankshaftDiameterMm,
+        timingTrackDiameterUncertaintyMm: crankshaftDiameterUncertaintyMm,
+        measuredArcMm: geometryResult.value.measuredArcMm,
+        measuredArcUncertaintyMm,
+        measuredArc: project.induction.measuredArc,
+        durationDeg: geometryResult.value.durationDeg,
+        nominalDerivedArcMm: geometryResult.value.derivedArcMm,
+        nominalCrankCutawayArcMm: geometryResult.value.crankCutawayArcMm,
+        nominalCrankcaseWindowArcMm:
+          geometryResult.value.crankcaseWindowArcMm,
+      })
+    : {
+        status: "not-entered" as const,
+        value: null,
+        diagnostic: null,
+      };
+  const geometry = geometryResult?.value
     ? {
-        crankshaftDiameterMm: geometryDurationResult.value.crankshaftDiameterMm,
-        circumferenceMm: geometryDurationResult.value.circumferenceMm,
-        crankCutawayArcMm: geometryDurationResult.value.crankCutawayArcMm,
-        crankCutawayDeg: geometryDurationResult.value.crankCutawayDeg,
-        crankcaseWindowArcMm: geometryDurationResult.value.crankcaseWindowArcMm,
-        crankcaseWindowDeg: geometryDurationResult.value.crankcaseWindowDeg,
-        combinedArcMm: geometryDurationResult.value.combinedArcMm,
-        durationDeg: geometryDurationResult.value.durationDeg,
-        anchor: project.induction.arcAnchor,
-        anchorAngleDeg,
-        advanceBeforeTdcDeg:
-          geometryResult?.value?.advanceBeforeTdcDeg ?? null,
-        delayAfterTdcDeg: geometryResult?.value?.delayAfterTdcDeg ?? null,
-        directDurationDifferenceDeg: direct
-          ? geometryDurationResult.value.durationDeg - direct.durationDeg
-          : null,
+        crankshaftDiameterMm: geometryResult.value.crankshaftDiameterMm,
+        circumferenceMm: geometryResult.value.circumferenceMm,
+        crankCutawayArcMm: geometryResult.value.crankCutawayArcMm,
+        crankCutawayDeg: geometryResult.value.crankCutawayDeg,
+        crankcaseWindowArcMm: geometryResult.value.crankcaseWindowArcMm,
+        crankcaseWindowDeg: geometryResult.value.crankcaseWindowDeg,
+        combinedArcMm: geometryResult.value.combinedArcMm,
+        durationDeg: geometryResult.value.durationDeg,
+        measuredArc: project.induction.measuredArc,
+        measuredArcMm: geometryResult.value.measuredArcMm,
+        derivedArcMm: geometryResult.value.derivedArcMm,
+        advanceBeforeTdcDeg: geometryResult.value.advanceBeforeTdcDeg,
+        delayAfterTdcDeg: geometryResult.value.delayAfterTdcDeg,
+        uncertainty: geometryUncertainty.value,
+        uncertaintyStatus: geometryUncertainty.status,
       }
     : null;
 
-  const activeResult =
-    timingSource === "crank-and-case-arcs" ? geometryResult : directResult;
   const diagnostics: string[] = [];
   if (project.induction.mode === "rotary") {
-    if (activeResult) {
-      diagnostics.push(...diagnosticMessages(activeResult));
-    } else if (timingSource === "crank-and-case-arcs") {
-      if (geometryResult) {
-        diagnostics.push(...diagnosticMessages(geometryResult));
-      } else if (geometryDurationResult?.value) {
-        diagnostics.push(...diagnosticMessages(geometryDurationResult));
+    if (directResult) diagnostics.push(...diagnosticMessages(directResult));
+    if (!directResult?.value) {
+      diagnostics.push(
+        "Enter both desired rotary timing edges to position the inlet relative to TDC.",
+      );
+    }
+    if (timingSource === "crank-and-case-arcs") {
+      if (geometryResult) diagnostics.push(...diagnosticMessages(geometryResult));
+      if (!geometryResult?.value) {
         diagnostics.push(
-          "Enter one timing anchor to position the arc-derived duration relative to TDC.",
-        );
-      } else if (geometryDurationResult) {
-        diagnostics.push(...diagnosticMessages(geometryDurationResult));
-      } else {
-        diagnostics.push(
-          "Enter a crankshaft diameter, both circumferential arc lengths and one timing anchor to position the rotary inlet.",
+          "Enter the timing-track diameter and one positive measured arc shorter than the total required by the desired timing.",
         );
       }
-    } else {
-      diagnostics.push(
-        "Enter both direct rotary timing edges to position the inlet relative to TDC.",
-      );
+    }
+    if (geometryUncertainty.diagnostic) {
+      diagnostics.push(geometryUncertainty.diagnostic);
     }
   }
   return {
     analysis: { timingSource, direct, geometry },
-    timing: project.induction.mode === "rotary" ? activeResult?.value ?? null : null,
-    diagnostics,
+    timing:
+      project.induction.mode === "rotary" ? directResult?.value ?? null : null,
+    diagnostics: [...new Set(diagnostics)],
   };
 }
 
@@ -494,12 +969,58 @@ function analysePort(
         travelFromTdcMm: upperTravel,
       }).value;
       if (lower && upper) {
+        const integrateAtTravel = (
+          roofTravelFromTdcMm: number,
+          openingAngleDeg: number,
+        ): { angleArea: number | null; timeArea: number | null } => {
+          if (
+            widthMm === null ||
+            widthMm <= 0 ||
+            heightMm === null ||
+            heightMm <= 0 ||
+            count === null ||
+            !Number.isInteger(count) ||
+            count <= 0
+          ) {
+            return { angleArea: null, timeArea: null };
+          }
+          const integrated = integrateRectangularPortAngleArea({
+            strokeMm,
+            rodLengthMm,
+            roofTravelFromTdcMm,
+            portWidthMm: widthMm,
+            portHeightMm: heightMm,
+            portCount: count,
+            startAngleDeg: openingAngleDeg,
+            endAngleDeg: 360 - openingAngleDeg,
+            integrationStepDeg: 0.25,
+          }).value;
+          const angleArea = integrated?.angleAreaMm2Deg ?? null;
+          const timeArea =
+            angleArea !== null && rpm !== null && displacementCc !== null
+              ? specificTimeArea({ angleAreaMm2Deg: angleArea, rpm, displacementCc })
+                  .value?.specificTimeAreaSecondsMm2PerCc ?? null
+              : null;
+          return { angleArea, timeArea };
+        };
+        const maximumArea = integrateAtTravel(
+          lowerTravel,
+          lower.openingAngleDeg,
+        );
+        const minimumArea = integrateAtTravel(
+          upperTravel,
+          upper.openingAngleDeg,
+        );
         uncertainty = {
           travelMm: uncertaintyMm,
           openingMinDeg: lower.openingAngleDeg,
           openingMaxDeg: upper.openingAngleDeg,
           durationMinDeg: 360 - 2 * upper.openingAngleDeg,
           durationMaxDeg: 360 - 2 * lower.openingAngleDeg,
+          angleAreaMinMm2Deg: minimumArea.angleArea,
+          angleAreaMaxMm2Deg: maximumArea.angleArea,
+          specificTimeAreaMin: minimumArea.timeArea,
+          specificTimeAreaMax: maximumArea.timeArea,
         };
       }
     }
@@ -615,7 +1136,10 @@ function analyseProjectCore(
         exhaustTransferUnionOverlapSegments: [],
         blowdownAngleAreaMm2Deg: null,
         blowdownSpecificTimeArea: null,
+        uncertainty: null,
       },
+      character: null,
+      characterGeometry: null,
       compression: {
         clearanceVolumeMode: project.compression.volumeMode,
         geometricRatio: null,
@@ -646,6 +1170,7 @@ function analyseProjectCore(
       diagnostics: [
         "Enter a positive bore, stroke and rod length. Rod length must exceed half the stroke.",
       ],
+      advisories: [],
     };
   }
 
@@ -691,10 +1216,21 @@ function analyseProjectCore(
             transferDurationDeg: port.durationDeg,
           }).value
         : null;
+    const valveMarginUncertainty =
+      rotaryTiming && port.uncertainty
+        ? {
+            minimumDeg:
+              rotaryTiming.advanceBeforeTdcDeg -
+              port.uncertainty.openingMaxDeg,
+            maximumDeg:
+              rotaryTiming.advanceBeforeTdcDeg -
+              port.uncertainty.openingMinDeg,
+          }
+        : null;
     return {
       port,
       blowdownDeg,
-      blowdownMs: blowdownDeg === null ? null : durationMs(Math.abs(blowdownDeg), rpm),
+      blowdownMs: blowdownDeg === null ? null : durationMs(blowdownDeg, rpm),
       exhaustDurationDifferenceDeg: exhaust
         ? exhaust.durationDeg - port.durationDeg
         : null,
@@ -703,6 +1239,7 @@ function analyseProjectCore(
       valveOverlapMs:
         valveOverlapDeg === null ? null : durationMs(valveOverlapDeg, rpm),
       valveMarginDeg: margin?.signedMarginDeg ?? null,
+      valveMarginUncertainty,
       valveRelationship: margin?.relationship ?? "not-applicable",
     };
   });
@@ -721,9 +1258,44 @@ function analyseProjectCore(
   const transferOpeningSpreadDeg = openings.length
     ? Math.max(...openings) - Math.min(...openings)
     : null;
+  const hasTimingUncertainty =
+    Boolean(exhaust?.uncertainty) ||
+    transferPorts.some((port) => port.uncertainty !== null);
+  const exhaustOpeningMinimum = exhaust
+    ? exhaust.uncertainty?.openingMinDeg ?? exhaust.openingAngleDeg
+    : null;
+  const exhaustOpeningMaximum = exhaust
+    ? exhaust.uncertainty?.openingMaxDeg ?? exhaust.openingAngleDeg
+    : null;
+  const earliestTransferOpeningMinimum = transferPorts.length
+    ? Math.min(
+        ...transferPorts.map(
+          (port) => port.uncertainty?.openingMinDeg ?? port.openingAngleDeg,
+        ),
+      )
+    : null;
+  const earliestTransferOpeningMaximum = transferPorts.length
+    ? Math.min(
+        ...transferPorts.map(
+          (port) => port.uncertainty?.openingMaxDeg ?? port.openingAngleDeg,
+        ),
+      )
+    : null;
+  const globalBlowdownMinimum =
+    exhaustOpeningMaximum !== null && earliestTransferOpeningMinimum !== null
+      ? earliestTransferOpeningMinimum - exhaustOpeningMaximum
+      : null;
+  const globalBlowdownMaximum =
+    exhaustOpeningMinimum !== null && earliestTransferOpeningMaximum !== null
+      ? earliestTransferOpeningMaximum - exhaustOpeningMinimum
+      : null;
 
   let blowdownAngleAreaMm2Deg: number | null = null;
   let blowdownSpecificTimeArea: number | null = null;
+  let blowdownAngleAreaMinimum: number | null = null;
+  let blowdownAngleAreaMaximum: number | null = null;
+  let blowdownSpecificTimeAreaMinimum: number | null = null;
+  let blowdownSpecificTimeAreaMaximum: number | null = null;
   if (
     exhaust &&
     exhaust.widthMm !== null &&
@@ -732,18 +1304,33 @@ function analyseProjectCore(
     earliestTransferOpening !== null &&
     earliestTransferOpening > exhaust.openingAngleDeg
   ) {
-    const result = integrateRectangularPortAngleArea({
-      strokeMm,
-      rodLengthMm,
-      roofTravelFromTdcMm: exhaust.travelFromTdcMm,
-      portWidthMm: exhaust.widthMm,
-      portHeightMm: exhaust.heightMm,
-      portCount: exhaust.count,
-      startAngleDeg: exhaust.openingAngleDeg,
-      endAngleDeg: earliestTransferOpening,
-      integrationStepDeg: 0.1,
-    });
-    blowdownAngleAreaMm2Deg = result.value?.angleAreaMm2Deg ?? null;
+    const integrateBlowdownAt = (
+      roofTravelFromTdcMm: number,
+      endAngleDeg: number,
+    ): number | null => {
+      const opening = crankAnglesFromTdcTravel({
+        strokeMm,
+        rodLengthMm,
+        travelFromTdcMm: roofTravelFromTdcMm,
+      }).value?.openingAngleDeg;
+      if (opening === undefined) return null;
+      if (endAngleDeg <= opening) return 0;
+      return integrateRectangularPortAngleArea({
+        strokeMm,
+        rodLengthMm,
+        roofTravelFromTdcMm,
+        portWidthMm: exhaust.widthMm!,
+        portHeightMm: exhaust.heightMm!,
+        portCount: exhaust.count!,
+        startAngleDeg: opening,
+        endAngleDeg,
+        integrationStepDeg: 0.1,
+      }).value?.angleAreaMm2Deg ?? null;
+    };
+    blowdownAngleAreaMm2Deg = integrateBlowdownAt(
+      exhaust.travelFromTdcMm,
+      earliestTransferOpening,
+    );
     if (blowdownAngleAreaMm2Deg !== null && rpm && displacementCc) {
       blowdownSpecificTimeArea =
         specificTimeArea({
@@ -751,6 +1338,40 @@ function analyseProjectCore(
           rpm,
           displacementCc,
         }).value?.specificTimeAreaSecondsMm2PerCc ?? null;
+    }
+    if (
+      hasTimingUncertainty &&
+      earliestTransferOpeningMinimum !== null &&
+      earliestTransferOpeningMaximum !== null
+    ) {
+      const exhaustTravelUncertainty = exhaust.uncertainty?.travelMm ?? 0;
+      blowdownAngleAreaMinimum = integrateBlowdownAt(
+        exhaust.travelFromTdcMm + exhaustTravelUncertainty,
+        earliestTransferOpeningMinimum,
+      );
+      blowdownAngleAreaMaximum = integrateBlowdownAt(
+        exhaust.travelFromTdcMm - exhaustTravelUncertainty,
+        earliestTransferOpeningMaximum,
+      );
+      if (
+        blowdownAngleAreaMinimum !== null &&
+        blowdownAngleAreaMaximum !== null &&
+        rpm &&
+        displacementCc
+      ) {
+        blowdownSpecificTimeAreaMinimum =
+          specificTimeArea({
+            angleAreaMm2Deg: blowdownAngleAreaMinimum,
+            rpm,
+            displacementCc,
+          }).value?.specificTimeAreaSecondsMm2PerCc ?? null;
+        blowdownSpecificTimeAreaMaximum =
+          specificTimeArea({
+            angleAreaMm2Deg: blowdownAngleAreaMaximum,
+            rpm,
+            displacementCc,
+          }).value?.specificTimeAreaSecondsMm2PerCc ?? null;
+      }
     }
   }
 
@@ -769,19 +1390,101 @@ function analyseProjectCore(
       rotaryTransferSegments,
       exhaustSegments,
     );
-    const windowArea = parseLocaleNumber(project.induction.effectiveWindowAreaMm2);
-    const idealisedAngleAreaMm2Deg =
-      windowArea !== null && windowArea > 0
-        ? windowArea * rotaryTiming.durationDeg
+    const signedMargins = transfers
+      .map((transfer) => transfer.valveMarginDeg)
+      .filter((value): value is number => value !== null);
+    const signedTransferMarginDeg = signedMargins.length
+      ? Math.max(...signedMargins)
+      : null;
+    const signedTransferMarginUncertainty = transfers.some(
+      (transfer) => transfer.valveMarginUncertainty !== null,
+    )
+      ? {
+          minimumDeg: Math.max(
+            ...transfers.map(
+              (transfer) =>
+                transfer.valveMarginUncertainty?.minimumDeg ??
+                transfer.valveMarginDeg ??
+                Number.NEGATIVE_INFINITY,
+            ),
+          ),
+          maximumDeg: Math.max(
+            ...transfers.map(
+              (transfer) =>
+                transfer.valveMarginUncertainty?.maximumDeg ??
+                transfer.valveMarginDeg ??
+                Number.NEGATIVE_INFINITY,
+            ),
+          ),
+        }
+      : null;
+    const transferRelationship =
+      signedTransferMarginDeg === null
+        ? "not-applicable"
+        : signedTransferMarginUncertainty &&
+            signedTransferMarginUncertainty.minimumDeg <= 0 &&
+            signedTransferMarginUncertainty.maximumDeg >= 0
+          ? "indeterminate"
+          : signedTransferMarginDeg > 0
+            ? "overlap"
+            : signedTransferMarginDeg < 0
+              ? "gap"
+              : "coincident";
+    const commonAxialOverlapWidthMm = parseLocaleNumber(
+      project.induction.commonAxialOverlapWidthMm,
+    );
+    const commonAxialOverlapWidthUncertaintyMm = positiveEnteredUncertainty(
+      project.induction.commonAxialOverlapWidthUncertaintyMm,
+    );
+    const constantAreaMm2 = parseLocaleNumber(
+      project.induction.effectiveWindowAreaMm2,
+    );
+    const geometry = rotaryInduction.analysis.geometry;
+    const overlapArea =
+      project.induction.areaSource === "cylindrical-overlap" &&
+      geometry &&
+      commonAxialOverlapWidthMm !== null &&
+      commonAxialOverlapWidthMm > 0
+        ? integrateRotaryOverlapArea({
+            circumferenceMm: geometry.circumferenceMm,
+            crankCutawayArcMm: geometry.crankCutawayArcMm,
+            crankcaseWindowArcMm: geometry.crankcaseWindowArcMm,
+            windowWidthMm: commonAxialOverlapWidthMm,
+            integrationStepDeg: 0.25,
+          }).value
         : null;
-    const idealisedSpecificTimeArea =
-      idealisedAngleAreaMm2Deg !== null && rpm && displacementCc
+    const constantAngleAreaMm2Deg =
+      project.induction.areaSource === "constant-area" &&
+      constantAreaMm2 !== null &&
+      constantAreaMm2 > 0
+        ? constantAreaMm2 * rotaryTiming.durationDeg
+        : null;
+    const inletAngleAreaMm2Deg =
+      overlapArea?.angleAreaMm2Deg ?? constantAngleAreaMm2Deg;
+    const overlapSpecificTimeArea =
+      inletAngleAreaMm2Deg !== null && rpm && displacementCc
         ? specificTimeArea({
-            angleAreaMm2Deg: idealisedAngleAreaMm2Deg,
+            angleAreaMm2Deg: inletAngleAreaMm2Deg,
             rpm,
             displacementCc,
           }).value?.specificTimeAreaSecondsMm2PerCc ?? null
         : null;
+    const areaUncertaintyResolution =
+      overlapArea && geometry && commonAxialOverlapWidthMm !== null
+        ? resolveRotaryAreaUncertainty({
+            geometry,
+            windowWidthMm: commonAxialOverlapWidthMm,
+            windowWidthUncertaintyMm:
+              commonAxialOverlapWidthUncertaintyMm,
+            durationDeg: rotaryTiming.durationDeg,
+            rpm,
+            displacementCc,
+            nominal: overlapArea,
+          })
+        : null;
+    if (areaUncertaintyResolution?.diagnostic) {
+      diagnostics.push(areaUncertaintyResolution.diagnostic);
+    }
     rotary = {
       source: rotaryInduction.analysis.timingSource,
       advanceBeforeTdcDeg: rotaryTiming.advanceBeforeTdcDeg,
@@ -792,10 +1495,52 @@ function analyseProjectCore(
       unionTransferOverlapDeg,
       unionTransferOverlapMs: durationMs(unionTransferOverlapDeg, rpm),
       unionTransferOverlapSegments: rotaryTransferSegments,
+      signedTransferMarginDeg,
+      signedTransferMarginUncertainty,
+      transferRelationship,
       tripleOverlapDeg,
       tripleOverlapSegments,
-      idealisedAngleAreaMm2Deg,
-      idealisedSpecificTimeArea,
+      inletCloseAfterTdcDeg: rotaryTiming.delayAfterTdcDeg,
+      inletCloseAfterTdcMs: durationMs(rotaryTiming.delayAfterTdcDeg, rpm),
+      areaModel: overlapArea
+        ? "cylindrical-overlap"
+        : constantAngleAreaMm2Deg !== null
+          ? "constant-area"
+          : "unavailable",
+      crankcaseWindowAreaMm2: overlapArea?.crankcaseWindowAreaMm2 ?? null,
+      maximumOpenAreaMm2:
+        overlapArea?.maximumOpenAreaMm2 ??
+        (constantAngleAreaMm2Deg !== null ? constantAreaMm2 : null),
+      meanOpenAreaMm2:
+        overlapArea?.meanOpenAreaMm2 ??
+        (constantAngleAreaMm2Deg !== null ? constantAreaMm2 : null),
+      overlapAngleAreaMm2Deg: inletAngleAreaMm2Deg,
+      overlapSpecificTimeArea,
+      areaUncertainty: areaUncertaintyResolution?.value ?? null,
+      areaSamples: overlapArea
+        ? areaUncertaintyResolution?.samples ??
+          overlapArea.samples.map(({ elapsedDeg, openAreaMm2 }) => ({
+            elapsedDeg,
+            openAreaMm2,
+            minimumOpenAreaMm2: null,
+            maximumOpenAreaMm2: null,
+          }))
+        : constantAngleAreaMm2Deg !== null && constantAreaMm2 !== null
+          ? [
+              {
+                elapsedDeg: 0,
+                openAreaMm2: constantAreaMm2,
+                minimumOpenAreaMm2: null,
+                maximumOpenAreaMm2: null,
+              },
+              {
+                elapsedDeg: rotaryTiming.durationDeg,
+                openAreaMm2: constantAreaMm2,
+                minimumOpenAreaMm2: null,
+                maximumOpenAreaMm2: null,
+              },
+            ]
+          : [],
     };
   }
 
@@ -873,6 +1618,317 @@ function analyseProjectCore(
   const manufacturerMinimumMm = parseLocaleNumber(
     project.squish.manufacturerMinimumMm,
   );
+  const characterRpmMinimum = parseLocaleNumber(project.character.rpmMinimum);
+  const characterRpmMaximum = parseLocaleNumber(project.character.rpmMaximum);
+  const characterRpmStep = parseLocaleNumber(project.character.rpmStep);
+  const rpmSweep =
+    characterRpmMinimum !== null &&
+    characterRpmMinimum >= 500 &&
+    characterRpmMaximum !== null &&
+    characterRpmMaximum > characterRpmMinimum &&
+    characterRpmMaximum <= 20_000 &&
+    characterRpmStep !== null &&
+    characterRpmStep >= 100 &&
+    characterRpmStep <= 2_000 &&
+    (characterRpmMaximum - characterRpmMinimum) / characterRpmStep <= 80
+      ? Array.from(
+          {
+            length:
+              Math.floor(
+                (characterRpmMaximum - characterRpmMinimum) /
+                  characterRpmStep,
+              ) + 1,
+          },
+          (_, index) => characterRpmMinimum + index * characterRpmStep,
+        ).concat(
+          (characterRpmMaximum - characterRpmMinimum) % characterRpmStep === 0
+            ? []
+            : [characterRpmMaximum],
+        )
+      : null;
+  const timeAreaInputs: Array<{
+    id: string;
+    label: string;
+    colour: string;
+    source: "full-event" | "blowdown" | "rotary-inlet";
+    angleArea: number | null;
+    minimum: number | null;
+    maximum: number | null;
+  }> = [
+    ...ports.map((port) => ({
+      id: port.id,
+      label: port.label,
+      colour: port.colour,
+      source: "full-event" as const,
+      angleArea: port.angleAreaMm2Deg,
+      minimum: port.uncertainty?.angleAreaMinMm2Deg ?? null,
+      maximum: port.uncertainty?.angleAreaMaxMm2Deg ?? null,
+    })),
+    {
+      id: "blowdown",
+      label: "Exhaust blowdown",
+      colour: "#8f341c",
+      source: "blowdown" as const,
+      angleArea: blowdownAngleAreaMm2Deg,
+      minimum: blowdownAngleAreaMinimum,
+      maximum: blowdownAngleAreaMaximum,
+    },
+    {
+      id: "rotary-inlet",
+      label: "Rotary inlet",
+      colour: "#d2a42e",
+      source: "rotary-inlet" as const,
+      angleArea: rotary?.overlapAngleAreaMm2Deg ?? null,
+      minimum:
+        rotary?.areaUncertainty?.overlapAngleAreaMm2Deg.minimum ?? null,
+      maximum:
+        rotary?.areaUncertainty?.overlapAngleAreaMm2Deg.maximum ?? null,
+    },
+  ];
+  const characterGeometry =
+    rpmSweep && displacementCc && displacementCc > 0
+      ? {
+          rpmMinimum: characterRpmMinimum!,
+          rpmMaximum: characterRpmMaximum!,
+          rpmStep: characterRpmStep!,
+          series: timeAreaInputs.flatMap((entry) => {
+            if (entry.angleArea === null) return [];
+            return [
+              {
+                id: entry.id,
+                label: entry.label,
+                colour: entry.colour,
+                source: entry.source,
+                samples: rpmSweep.map((sampleRpm) => ({
+                  rpm: sampleRpm,
+                  specificTimeArea:
+                    entry.angleArea! / (6 * sampleRpm * displacementCc),
+                  minimum:
+                    entry.minimum === null
+                      ? null
+                      : entry.minimum / (6 * sampleRpm * displacementCc),
+                  maximum:
+                    entry.maximum === null
+                      ? null
+                      : entry.maximum / (6 * sampleRpm * displacementCc),
+                })),
+              },
+            ];
+          }),
+        }
+      : null;
+  const characterTransfer = transferPorts.reduce<PortAnalysis | null>(
+    (selected, port) =>
+      selected === null || port.durationDeg > selected.durationDeg
+        ? port
+        : selected,
+    null,
+  );
+  const character =
+    project.character.referenceSetVersion ===
+      PROFILE_REFERENCE_SET_VERSION &&
+    project.character.profile !== "none" &&
+    exhaust &&
+    characterTransfer &&
+    rotary &&
+    globalBlowdownDeg !== null &&
+    rotary.signedTransferMarginDeg !== null
+      ? modelEngineCharacter(
+          {
+            profile: project.character.profile,
+            exhaustDurationDeg: exhaust.durationDeg,
+            transferDurationDeg: characterTransfer.durationDeg,
+            blowdownDeg: globalBlowdownDeg,
+            inletAdvanceBtdcDeg: rotary.advanceBeforeTdcDeg,
+            inletCloseAtdcDeg: rotary.inletCloseAfterTdcDeg,
+            inletTransferMarginDeg: rotary.signedTransferMarginDeg,
+            exhaustSpecificTimeArea: blowdownSpecificTimeArea,
+            inletSpecificTimeArea: rotary.overlapSpecificTimeArea,
+          },
+          hasTimingUncertainty &&
+          globalBlowdownMinimum !== null &&
+          globalBlowdownMaximum !== null
+            ? {
+                exhaustDurationDeg: exhaust.uncertainty
+                  ? {
+                      minimum: exhaust.uncertainty.durationMinDeg,
+                      maximum: exhaust.uncertainty.durationMaxDeg,
+                    }
+                  : undefined,
+                transferDurationDeg: characterTransfer.uncertainty
+                  ? {
+                      minimum: characterTransfer.uncertainty.durationMinDeg,
+                      maximum: characterTransfer.uncertainty.durationMaxDeg,
+                    }
+                  : undefined,
+                blowdownDeg: {
+                  minimum: globalBlowdownMinimum,
+                  maximum: globalBlowdownMaximum,
+                },
+                inletTransferMarginDeg:
+                  rotary.signedTransferMarginUncertainty === null
+                    ? undefined
+                    : {
+                        minimum:
+                          rotary.signedTransferMarginUncertainty.minimumDeg,
+                        maximum:
+                          rotary.signedTransferMarginUncertainty.maximumDeg,
+                      },
+              }
+            : undefined,
+        )
+      : null;
+  const profile =
+    project.character.profile === "none" ||
+    project.character.referenceSetVersion !== PROFILE_REFERENCE_SET_VERSION
+      ? null
+      : ENGINE_CHARACTER_PROFILES[project.character.profile];
+  const advisories: AnalysisAdvisory[] = [];
+  if (globalBlowdownDeg !== null) {
+    const rangeCopy =
+      hasTimingUncertainty &&
+      globalBlowdownMinimum !== null &&
+      globalBlowdownMaximum !== null
+        ? ` Measurement bounds span ${globalBlowdownMinimum.toFixed(1)}-${globalBlowdownMaximum.toFixed(1)} degrees.`
+        : "";
+    advisories.push({
+      id: "geometry-blowdown",
+      evidence: "calculated-geometry",
+      tone: globalBlowdownDeg <= 0 ? "strong" : "neutral",
+      title: "Exhaust-to-transfer blowdown",
+      message: `${globalBlowdownDeg.toFixed(1)} degrees from exhaust opening to the earliest transfer opening.${rangeCopy}`,
+    });
+    if (profile) {
+      advisories.push({
+        id: "profile-blowdown",
+        evidence: "profile-heuristic",
+        tone: "neutral",
+        title: `${profile.label} blowdown context`,
+        message:
+          "The selected profile changes the qualitative speed and bandwidth lens. Blowdown degrees alone cannot establish sufficient gas-flow capacity; compare geometric time-area at the same RPM and validate on the engine.",
+      });
+    }
+  }
+  if (rotary) {
+    const signedMargin = rotary.signedTransferMarginDeg;
+    if (signedMargin !== null) {
+      const relationshipCopy =
+        rotary.transferRelationship === "indeterminate"
+          ? signedMargin > 0
+            ? "The nominal geometry overlaps, but the measurement bounds cross zero, so overlap versus gap is indeterminate."
+            : signedMargin < 0
+              ? "The nominal geometry has a gap, but the measurement bounds cross zero, so overlap versus gap is indeterminate."
+              : "The nominal edges coincide and the measurement bounds leave overlap versus gap indeterminate."
+          : signedMargin > 0
+            ? "The inlet opens while at least one transfer is still open."
+            : signedMargin < 0
+              ? "All transfers close before the inlet opens."
+              : "The inlet opening and final transfer closure coincide geometrically.";
+      advisories.push({
+        id: "geometry-inlet-transfer-margin",
+        evidence: "calculated-geometry",
+        tone:
+          rotary.transferRelationship === "indeterminate"
+            ? "caution"
+            : "neutral",
+        title: "Signed inlet-to-transfer margin",
+        message: `${signedMargin > 0 ? "+" : ""}${signedMargin.toFixed(1)} degrees. ${relationshipCopy}`,
+      });
+      advisories.push({
+        id: "profile-inlet-transfer-margin",
+        evidence: "profile-heuristic",
+        tone:
+          rotary.signedTransferMarginUncertainty &&
+          rotary.signedTransferMarginUncertainty.minimumDeg <= 5 &&
+          rotary.signedTransferMarginUncertainty.maximumDeg > 5
+            ? "caution"
+            : (rotary.signedTransferMarginUncertainty?.minimumDeg ??
+                  signedMargin) > 5
+              ? "strong"
+              : "neutral",
+        title: profile
+          ? `${profile.label} overlap context`
+          : "Vespa overlap reference",
+        message:
+          rotary.signedTransferMarginUncertainty &&
+          rotary.signedTransferMarginUncertainty.minimumDeg <= 5 &&
+          rotary.signedTransferMarginUncertainty.maximumDeg > 5
+            ? "The measurement bounds cross the conservative +5 degree Vespa reference discussed by WhiteOne Racing, so at-or-below versus exceeds is indeterminate. Treat the threshold as contextual guidance, not a statistical limit or proof of correct flow direction."
+            : (rotary.signedTransferMarginUncertainty?.minimumDeg ??
+                  signedMargin) > 5
+              ? "The signed opening overlap exceeds the conservative +5 degree Vespa ceiling discussed by WhiteOne Racing across the entered measurement bounds. Treat this as a setup-specific warning and verify starting, blowback and delivery on the engine."
+              : "The signed opening overlap is at or below the conservative +5 degree Vespa ceiling discussed by WhiteOne Racing across the entered measurement bounds. This is context, not proof of an optimum or of correct flow direction.",
+        sourceLabel: "WhiteOne Racing, inlet overlap",
+        sourceUrl: "https://www.youtube.com/watch?v=jhnKO9YTaC0&t=506s",
+      });
+    }
+    advisories.push({
+      id: "geometry-inlet-closing",
+      evidence: "calculated-geometry",
+      tone: "neutral",
+      title: "Inlet closing is a separate event",
+      message: `${rotary.inletCloseAfterTdcDeg.toFixed(1)} degrees ATDC. This edge is not part of the inlet-to-transfer opening margin.`,
+    });
+    if (profile) {
+      advisories.push({
+        id: "profile-inlet-closing",
+        evidence: "profile-heuristic",
+        tone: "neutral",
+        title: `${profile.label} inlet-closing context`,
+        message:
+          "Later inlet closing can support higher-speed filling but can also increase low-speed blowback. The selected profile changes the interpretation, while crankcase pressure and inlet restriction remain unmodelled.",
+      });
+    }
+    advisories.push({
+      id: "modelled-rotary-area",
+      evidence: "measured-or-modelled",
+      tone: rotary.overlapAngleAreaMm2Deg === null ? "caution" : "neutral",
+      title: "Rotary inlet overlap area",
+      message:
+        rotary.overlapAngleAreaMm2Deg === null
+          ? "Select an area source and enter its required measurement to calculate inlet angle-area."
+          : rotary.areaModel === "constant-area"
+            ? "This project uses the legacy constant-area approximation across the inlet duration. Switch to cylindrical overlap and enter a common axial width to model the changing geometric opening."
+            : "Area is integrated from the instantaneous overlap of the measured and calculated arcs across a sharp-edged rectangular window. Duct shape, leakage and discharge are excluded.",
+    });
+  }
+  const hasRotaryMeasurementUncertainty =
+    (rotaryInduction.analysis.geometry?.uncertaintyStatus ?? "not-entered") !==
+      "not-entered" ||
+    positiveEnteredUncertainty(
+      project.induction.commonAxialOverlapWidthUncertaintyMm,
+    ) > 0;
+  if (hasTimingUncertainty || hasRotaryMeasurementUncertainty) {
+    advisories.push({
+      id: "modelled-measurement-uncertainty",
+      evidence: "measured-or-modelled",
+      tone: "caution",
+      title: "Measurement uncertainty propagated",
+      message:
+        "Entered millimetre uncertainty is propagated through every valid affected geometry, area, time-area and shaded character range. Bounds are deterministic worst cases from the entered plus-or-minus values, with no probability distribution or confidence level implied. Near a dead centre, equal linear uncertainty need not produce equal angular uncertainty.",
+      sourceLabel: "GSF measurement guidance",
+      sourceUrl:
+        "https://wiki.germanscooterforum.de/index.php/Steuerzeiten_messen",
+    });
+  }
+  if (character) {
+    advisories.push({
+      id: "modelled-engine-character",
+      evidence: "measured-or-modelled",
+      tone: "neutral",
+      title: "Uncalibrated engine character",
+      message: character.modelStatement,
+    });
+  } else {
+    advisories.push({
+      id: "profile-not-selected",
+      evidence: "profile-heuristic",
+      tone: "neutral",
+      title: "No interpretation profile selected",
+      message:
+        "Geometry remains fully available. Select a profile only when you want a conditional engine-character interpretation.",
+    });
+  }
 
   return {
     validGeometry: true,
@@ -888,7 +1944,7 @@ function analyseProjectCore(
       globalBlowdownMs:
         globalBlowdownDeg === null
           ? null
-          : durationMs(Math.abs(globalBlowdownDeg), rpm),
+          : durationMs(globalBlowdownDeg, rpm),
       transferOpeningSpreadDeg,
       exhaustTransferUnionOverlapDeg,
       exhaustTransferUnionOverlapSegments: exhaust
@@ -896,7 +1952,30 @@ function analyseProjectCore(
         : [],
       blowdownAngleAreaMm2Deg,
       blowdownSpecificTimeArea,
+      uncertainty:
+        hasTimingUncertainty &&
+        globalBlowdownMinimum !== null &&
+        globalBlowdownMaximum !== null
+          ? {
+              globalBlowdownMinDeg: globalBlowdownMinimum,
+              globalBlowdownMaxDeg: globalBlowdownMaximum,
+              globalBlowdownMinMs: durationMs(
+                globalBlowdownMinimum,
+                rpm,
+              ),
+              globalBlowdownMaxMs: durationMs(
+                globalBlowdownMaximum,
+                rpm,
+              ),
+              blowdownAngleAreaMinMm2Deg: blowdownAngleAreaMinimum,
+              blowdownAngleAreaMaxMm2Deg: blowdownAngleAreaMaximum,
+              blowdownSpecificTimeAreaMin: blowdownSpecificTimeAreaMinimum,
+              blowdownSpecificTimeAreaMax: blowdownSpecificTimeAreaMaximum,
+            }
+          : null,
     },
+    character,
+    characterGeometry,
     compression: {
       clearanceVolumeMode: project.compression.volumeMode,
       geometricRatio: geometric?.ratio ?? null,
@@ -927,6 +2006,7 @@ function analyseProjectCore(
         ...ports.flatMap((port) => port.diagnostics),
       ]),
     ),
+    advisories,
   };
 }
 

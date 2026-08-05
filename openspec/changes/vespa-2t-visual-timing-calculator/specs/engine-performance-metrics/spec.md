@@ -1,6 +1,6 @@
 ## Purpose
 
-Defines transparent geometric calculations for displacement, piston speed, compression, squish, rectangular-port time-area, configuration comparison, and evidence-qualified interpretation without presenting those outputs as dynamic engine predictions or universal tuning targets.
+Defines transparent geometric calculations for displacement, piston speed, compression, squish, piston-port and rotary-overlap time-area, configuration comparison, uncertainty, and evidence-qualified interpretation without presenting those outputs as dynamic engine predictions or universal tuning targets.
 
 ## ADDED Requirements
 
@@ -143,6 +143,46 @@ The system SHALL numerically integrate each valid rectangular port profile over 
 - **WHEN** the same smooth rectangular-profile case is evaluated with the documented production integration tolerance and a finer verification tolerance
 - **THEN** the results agree within the published numeric acceptance bound
 
+### Requirement: Explicit rotary inlet area source
+The system SHALL support `constant-area` and `cylindrical-overlap` as distinct rotary inlet area sources. `constant-area` SHALL preserve backward-compatible idealised calculation from a separately entered positive area `Ae`, calculating angle-area as `Ae * T` for desired duration `T`. `cylindrical-overlap` SHALL use the changing geometric sealing-surface overlap defined below and SHALL be available only with a valid physical arc solve and measured positive common axial overlap width. Both sources SHALL calculate specific time-area as `AA / (6 * n * Vd)` for positive RPM `n` and displacement `Vd`. The chosen source and its model boundary SHALL remain visible with every rotary area result.
+
+#### Scenario: Constant-area approximation remains available in timing-only mode
+- **WHEN** desired rotary timing and a positive entered `Ae` are valid while physical arc sizing is unavailable
+- **THEN** the system reports `Ae * T` as a constant-area approximation and does not claim a changing geometric overlap curve
+
+#### Scenario: Physical arc solve is invalid for cylindrical overlap
+- **WHEN** `cylindrical-overlap` is selected but diameter, manual arc, complementary arc, or common axial width is incomplete or invalid
+- **THEN** the geometric area curve, rotary angle-area, and rotary time-area are unavailable while desired timing remains available independently
+
+#### Scenario: Area-source comparison
+- **WHEN** both area sources can be evaluated for the same desired timing
+- **THEN** the system identifies their different assumptions and does not silently replace the entered constant area with a value inferred from physical arc lengths
+
+### Requirement: Geometric rotary inlet overlap-area profile
+For `cylindrical-overlap`, the system SHALL model one continuous moving crank cut-away interval `Ic(theta)` and one continuous fixed crankcase-window interval `Ik` on the same unwrapped sealing-track circumference. The desired opening and closing edges SHALL locate the first and final positive overlap. For measured common axial overlap width `Wa`, it SHALL calculate `overlapLength(theta) = measure(Ic(theta) intersect Ik)` using circular interval operations and `Ageom(theta) = Wa * overlapLength(theta)`. It SHALL numerically integrate `Ageom(theta)` across the desired event for rotary angle-area and derive specific time-area from that result.
+
+This result SHALL be named geometric rotary overlap area. If the user describes it as true effective area, the interface SHALL clarify that it is the effective geometric sealing-surface overlap in this idealised model, not discharge-corrected effective flow area. The model SHALL exclude axial offset beyond the measured common width, non-rectangular or disconnected boundaries, edge radius, leakage, duct restriction, discharge coefficient, pressure ratio, gas state, and wave action.
+
+#### Scenario: Geometric overlap opens and closes
+- **WHEN** valid sharp-edged component arcs and desired timing define a cylindrical-overlap event
+- **THEN** the area curve is zero at first contact, positive within the event, returns to zero at final contact, and never exceeds `Wa * min(Lc, Lk)` within the documented numeric tolerance
+
+#### Scenario: Manual-authority switch preserves geometric area
+- **WHEN** a valid switch between crank-cut-away and crankcase-opening authority preserves full-precision `Lc`, `Lk`, desired timing, diameter, and `Wa`
+- **THEN** the complete area-versus-angle curve, rotary angle-area, and rotary specific time-area remain unchanged
+
+#### Scenario: Change one physical arc through desired timing
+- **WHEN** desired opening or closing changes while diameter and the selected manual arc remain fixed and the complementary solve stays valid
+- **THEN** the complementary arc and geometric overlap-area curve are recalculated rather than scaling one constant area by duration
+
+#### Scenario: Common axial width is absent
+- **WHEN** component arc geometry is valid but `Wa` is missing
+- **THEN** circumferential overlap length may be shown in millimetres but area, angle-area, and time-area are unavailable and no width is inferred
+
+#### Scenario: Geometric overlap is not effective flow area
+- **WHEN** geometric rotary overlap area is displayed or exported
+- **THEN** its square-millimetre values carry the geometric model name and the excluded flow and sealing effects, without a flow coefficient, mass-flow result, or performance claim
+
 ### Requirement: Exhaust blowdown time-area
 The system SHALL calculate exhaust blowdown angle-area by integrating the exhaust open-area profile from exhaust opening to the earliest valid transfer opening. It SHALL convert that result to specific blowdown time-area when positive RPM and displacement are available.
 
@@ -159,7 +199,7 @@ The system SHALL calculate exhaust blowdown angle-area by integrating the exhaus
 - **THEN** blowdown time-area is unavailable without affecting valid angular blowdown results
 
 ### Requirement: Uncertainty-aware metric ranges
-The system SHALL propagate stated measurement uncertainty through compression, squish, and rectangular-port area calculations when the required input bounds remain physically valid. It SHALL display the nominal value and result interval without implying statistical confidence not present in the source measurements.
+The system SHALL propagate explicitly stated measurement bounds through event boundaries, signed inlet-to-transfer margins, separate inlet closing, blowdown degrees and elapsed time, compression, squish, piston-port area, rotary diameter and component solving, common axial overlap width, area-versus-angle curves, angle-area, and specific time-area whenever the complete input domain remains physically valid. It SHALL calculate a conservative bounded enclosure, display nominal value plus lower and upper bounds, and SHALL NOT describe the interval as a probability, confidence interval, standard deviation, or inferred manufacturing tolerance. Where extrema are not proven to occur only at input endpoints, the implementation SHALL use a documented bounded interval method rather than assuming monotonicity.
 
 #### Scenario: Port-roof uncertainty affects trapped ratio
 - **WHEN** exhaust timing derives from a roof measurement with a valid uncertainty range
@@ -170,8 +210,20 @@ The system SHALL propagate stated measurement uncertainty through compression, s
 - **THEN** their observed minimum and maximum remain distinct from instrument uncertainty attached to each reading
 
 #### Scenario: Uncertainty crosses a physical limit
-- **WHEN** an input uncertainty interval includes an impossible bore, volume, bowl diameter, or port dimension
+- **WHEN** an input uncertainty interval includes an impossible bore, volume, bowl diameter, port dimension, rotary diameter, component arc, complementary solve, or axial overlap width
 - **THEN** the system identifies the invalid bound and does not silently clip the interval
+
+#### Scenario: Uncertainty affects signed timing relationships
+- **WHEN** stated input bounds produce an inlet-to-transfer margin or blowdown range that crosses zero
+- **THEN** the system preserves the signed nominal result and complete range and marks the relation uncertain rather than selecting the nominal sign as definitive
+
+#### Scenario: Rotary area uncertainty is propagated
+- **WHEN** valid bounds are supplied for diameter, the manual component arc, and common axial overlap width
+- **THEN** the system encloses the resulting complementary arc, area-versus-angle curve, angle-area, and RPM-dependent specific time-area without inventing correlation or statistical confidence
+
+#### Scenario: Uncertainty crosses a profile band
+- **WHEN** a valid result range spans a selected profile threshold
+- **THEN** the profile comparison is indeterminate while the deterministic nominal value and bounds remain available
 
 ### Requirement: Configuration comparison
 The system SHALL allow the current valid configuration to be compared with one optional valid baseline or candidate configuration. Each configuration SHALL be calculated independently, and the system SHALL report signed deltas only for compatible metrics together with uncertainty-range overlap where available.
@@ -207,21 +259,48 @@ The system SHALL distinguish direct geometric dependencies from tuning interpret
 - **WHEN** a reduction in chamber or squish geometry is considered as a tuning action
 - **THEN** the system calculates only the entered dimensional consequences and requires configuration-specific clearance, volume, ignition, fuel, temperature, and physical verification before any tuning conclusion
 
-### Requirement: Evidence-tiered recommendations
-Every interpretive recommendation SHALL be classified as calculated geometry, documented configuration-specific reference, or tuning hypothesis requiring verification. A documented reference SHALL identify its source and applicable configuration. A tuning hypothesis SHALL identify the physical measurement or controlled trial needed to assess it.
+### Requirement: Three-level evidence-qualified diagnostics
+Every diagnostic SHALL use one of three explicit levels: deterministic `calculated-geometry`, contextual `profile-heuristic`, or `measured-or-modelled` evidence. Calculated geometry SHALL report only deterministic relationships, validity, and unavailable states. A profile heuristic SHALL compare a valid result with the versioned, source-labelled bands of the explicitly selected touring box, sport box, road expansion, or race expansion profile and SHALL remain advisory. Measured or modelled evidence SHALL identify its subtype, source, applicable hardware and operating condition, calibration scope, and uncertainty. No level SHALL be promoted into another by wording or colour.
 
 #### Scenario: Deterministic relationship
 - **WHEN** the system explains that a later exhaust closure reduces trapped swept volume while other inputs remain fixed
-- **THEN** the explanation is labelled calculated geometry
+- **THEN** the explanation is labelled `calculated-geometry`
 
-#### Scenario: Manufacturer-specific minimum
-- **WHEN** a squish or compression reference is shown for a particular component set
-- **THEN** it is labelled documented reference and includes the source and exact applicable configuration rather than becoming a universal limit
+#### Scenario: Profile-qualified comparison
+- **WHEN** a valid blowdown, inlet closing, signed margin, or time-area result is compared with the selected profile
+- **THEN** it is labelled `profile-heuristic` and includes profile identifier, reference-set version, source, applicability, numeric comparison, and uncertainty status without becoming a hard error
 
-#### Scenario: Tuning suggestion
-- **WHEN** the application presents a possible relationship between compression, squish, exhaust timing, or port time-area and intended engine behaviour
-- **THEN** it is labelled tuning hypothesis and names the degree-wheel, clearance, pressure, temperature, dyno, or road verification needed as applicable
+#### Scenario: Measured or calibrated-model evidence
+- **WHEN** the application presents a road, degree-wheel, pressure, temperature, flow-bench, or dyno observation, or a calibrated model result
+- **THEN** it is labelled `measured-or-modelled`, distinguishes measurement from model output, and names the provenance, configuration, operating condition, calibration scope, and uncertainty
+
+#### Scenario: Profile selection changes interpretation only
+- **WHEN** the user changes the selected exhaust-use profile
+- **THEN** geometry, compression, squish, timing, area, and time-area results remain unchanged while only contextual comparisons and character annotations may change
 
 #### Scenario: Unsupported ratio request
 - **WHEN** the available data does not establish a universal ratio between rotary-inlet duration, transfer duration, squish, compression, and exhaust degrees
 - **THEN** the system presents the measurable relationships and declines to create an unsourced good, bad, safe, unsafe, or optimum verdict
+
+### Requirement: Qualitative Engine character estimate
+The system SHALL provide an optional view titled Engine character estimate, built only from deterministic area-versus-angle series, specific time-area-versus-RPM series across a bounded user-selected RPM sweep, and the versioned bands of the explicitly selected diagnostic profile. It MAY annotate lower-speed, mid-range, upper-speed, or area-limited tendencies as `profile-heuristic` statements. It SHALL NOT calculate, plot, label, or imply torque, power, brake mean effective pressure, peak output, acceleration, vehicle speed, or a synthetic dyno curve. It SHALL NOT combine the geometric series into an undisclosed performance score.
+
+#### Scenario: Character geometry with a selected profile
+- **WHEN** valid port or rotary area geometry, displacement, an RPM sweep, and a diagnostic profile are available
+- **THEN** the view plots the underlying area-versus-angle and specific time-area-versus-RPM series with their real units and places separate source-labelled qualitative profile annotations beside them
+
+#### Scenario: No profile selected
+- **WHEN** profile is `none` and valid geometric series are available
+- **THEN** the graph shows only calculated geometry and explicit model boundaries without lower-speed, mid-range, upper-speed, or area-limited profile annotations
+
+#### Scenario: Insufficient area data
+- **WHEN** timing is valid but the area inputs required for an area or time-area series are absent
+- **THEN** the missing series is marked unavailable and no synthetic curve is generated from timing degrees alone
+
+#### Scenario: Character uncertainty bands
+- **WHEN** stated input uncertainty produces valid bounded area or time-area series
+- **THEN** the nominal series and bounded envelope are shown distinctly and any profile annotation whose threshold is crossed becomes indeterminate
+
+#### Scenario: Compare character geometry
+- **WHEN** current and comparison configurations both provide compatible character series
+- **THEN** the system shows their real geometric series and signed deltas without ranking either configuration or calling one more powerful

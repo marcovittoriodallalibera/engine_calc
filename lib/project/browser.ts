@@ -1,7 +1,7 @@
 import {
   MAX_PROJECT_BYTES,
   MAX_SHARE_FRAGMENT_LENGTH,
-  LEGACY_PROJECT_STORAGE_KEY,
+  LEGACY_PROJECT_STORAGE_KEYS,
   PROJECT_STORAGE_KEY,
   decodeProjectFragment,
   encodeProjectFragment,
@@ -78,11 +78,13 @@ export function loadProjectFromStorage(
   }
 
   try {
-    const stored =
-      repository.getItem(key) ??
-      (key === PROJECT_STORAGE_KEY
-        ? repository.getItem(LEGACY_PROJECT_STORAGE_KEY)
-        : null);
+    let stored = repository.getItem(key);
+    if (stored === null && key === PROJECT_STORAGE_KEY) {
+      for (const legacyKey of LEGACY_PROJECT_STORAGE_KEYS) {
+        stored = repository.getItem(legacyKey);
+        if (stored !== null) break;
+      }
+    }
     if (stored === null) {
       return {
         ok: true,
@@ -162,6 +164,11 @@ export function clearProjectFromStorage(
   }
   try {
     repository.removeItem(key);
+    if (key === PROJECT_STORAGE_KEY) {
+      for (const legacyKey of LEGACY_PROJECT_STORAGE_KEYS) {
+        repository.removeItem(legacyKey);
+      }
+    }
     return { ok: true, value: undefined, message: "Local project removed." };
   } catch {
     return { ok: false, message: "The local project could not be removed." };

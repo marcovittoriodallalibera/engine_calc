@@ -74,6 +74,27 @@ export interface RotaryValveArcDuration {
   durationDeg: number;
 }
 
+export type RotaryValveMeasuredArc =
+  | "crank-cutaway"
+  | "crankcase-opening";
+
+export interface RotaryValveArcSolverInput {
+  advanceBeforeTdcDeg: number;
+  delayAfterTdcDeg: number;
+  crankshaftDiameterMm: number;
+  measuredArc: RotaryValveMeasuredArc;
+  measuredArcMm: number;
+}
+
+export interface RotaryValveSolvedArcGeometry extends RotaryValveArcDuration {
+  advanceBeforeTdcDeg: number;
+  delayAfterTdcDeg: number;
+  interval: CircularInterval;
+  measuredArc: RotaryValveMeasuredArc;
+  measuredArcMm: number;
+  derivedArcMm: number;
+}
+
 export interface ArcLengthAngleConversion {
   diameterMm: number;
   circumferenceMm: number;
@@ -336,6 +357,93 @@ export function degreesToArcLength(
     arcLengthMm,
     degrees,
   });
+}
+
+export function resolveRotaryValveArcGeometry(
+  input: RotaryValveArcSolverInput,
+): CalculationResult<RotaryValveSolvedArcGeometry> {
+  const timing = rotaryValveTiming(
+    input.advanceBeforeTdcDeg,
+    input.delayAfterTdcDeg,
+  );
+  const totalArc = timing.value
+    ? degreesToArcLength(
+        timing.value.durationDeg,
+        input.crankshaftDiameterMm,
+      )
+    : null;
+  const diagnostics = [
+    ...timing.diagnostics,
+    ...(totalArc?.diagnostics ?? []),
+    ...collectDiagnostics(
+      positiveNumberDiagnostic(input.measuredArcMm, "measuredArcMm"),
+    ),
+  ];
+
+  if (
+    input.measuredArc !== "crank-cutaway" &&
+    input.measuredArc !== "crankcase-opening"
+  ) {
+    diagnostics.push(
+      errorDiagnostic(
+        "UNKNOWN_ROTARY_MEASURED_ARC",
+        "measuredArc must identify the crank cut-away or crankcase window.",
+        "measuredArc",
+      ),
+    );
+  }
+  if (!timing.value || !totalArc?.value) {
+    return calculationResult(null, diagnostics);
+  }
+
+  const toleranceMm =
+    Math.max(
+      1,
+      totalArc.value.circumferenceMm,
+      totalArc.value.arcLengthMm,
+    ) * 1e-12;
+  const derivedArcMm = totalArc.value.arcLengthMm - input.measuredArcMm;
+  if (derivedArcMm <= toleranceMm) {
+    diagnostics.push(
+      errorDiagnostic(
+        "ROTARY_MEASURED_ARC_LEAVES_NO_COMPLEMENT",
+        "The measured arc must be shorter than the total arc required by the desired timing.",
+        "measuredArcMm",
+      ),
+    );
+  }
+  if (diagnostics.some((item) => item.severity === "error")) {
+    return calculationResult(null, diagnostics);
+  }
+
+  const crankCutawayArcMm =
+    input.measuredArc === "crank-cutaway"
+      ? input.measuredArcMm
+      : derivedArcMm;
+  const crankcaseWindowArcMm =
+    input.measuredArc === "crankcase-opening"
+      ? input.measuredArcMm
+      : derivedArcMm;
+  const duration = rotaryValveDurationFromArcGeometry({
+    crankshaftDiameterMm: input.crankshaftDiameterMm,
+    crankCutawayArcMm,
+    crankcaseWindowArcMm,
+  });
+  diagnostics.push(...duration.diagnostics);
+  if (!duration.value) return calculationResult(null, diagnostics);
+
+  return calculationResult(
+    {
+      ...duration.value,
+      advanceBeforeTdcDeg: timing.value.advanceBeforeTdcDeg,
+      delayAfterTdcDeg: timing.value.delayAfterTdcDeg,
+      interval: timing.value.interval,
+      measuredArc: input.measuredArc,
+      measuredArcMm: input.measuredArcMm,
+      derivedArcMm,
+    },
+    diagnostics,
+  );
 }
 
 export function rotaryValveDurationFromArcGeometry(

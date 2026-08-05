@@ -9,6 +9,7 @@ import {
   degreesToArcLength,
   degreesAtRpmToMilliseconds,
   intakeTransferMargin,
+  resolveRotaryValveArcGeometry,
   rotaryValveTiming,
   rotaryValveTimingFromArcGeometry,
   splitCircularInterval,
@@ -75,6 +76,71 @@ test("circumferential arc length converts to crank degrees without intermediate 
 
   assert.ok(Math.abs(converted.value!.degrees - 45.83662361046586) < 1e-12);
   assert.ok(Math.abs(reversed.value!.arcLengthMm - 20) < 1e-12);
+});
+
+test("desired rotary timing solves the unmeasured crankcase arc", () => {
+  const measuredCrankArcMm = (Math.PI * 50 * 150) / 360;
+  const result = resolveRotaryValveArcGeometry({
+    advanceBeforeTdcDeg: 120,
+    delayAfterTdcDeg: 65,
+    crankshaftDiameterMm: 50,
+    measuredArc: "crank-cutaway",
+    measuredArcMm: measuredCrankArcMm,
+  });
+
+  assert.ok(result.value);
+  assert.ok(Math.abs(result.value.combinedArcMm - (Math.PI * 50 * 185) / 360) < 1e-12);
+  assert.ok(Math.abs(result.value.crankCutawayDeg - 150) < 1e-12);
+  assert.ok(Math.abs(result.value.crankcaseWindowDeg - 35) < 1e-12);
+  assert.ok(Math.abs(result.value.derivedArcMm - (Math.PI * 50 * 35) / 360) < 1e-12);
+  assert.deepEqual(result.value.interval, {
+    startDeg: 240,
+    endDeg: 65,
+    fullCircle: false,
+  });
+});
+
+test("either rotary arc can be the sole measured input", () => {
+  const measuredCaseArcMm = (Math.PI * 50 * 35) / 360;
+  const result = resolveRotaryValveArcGeometry({
+    advanceBeforeTdcDeg: 120,
+    delayAfterTdcDeg: 65,
+    crankshaftDiameterMm: 50,
+    measuredArc: "crankcase-opening",
+    measuredArcMm: measuredCaseArcMm,
+  });
+
+  assert.ok(result.value);
+  assert.equal(result.value.measuredArcMm, measuredCaseArcMm);
+  assert.ok(Math.abs(result.value.crankCutawayDeg - 150) < 1e-12);
+  assert.ok(Math.abs(result.value.crankcaseWindowDeg - 35) < 1e-12);
+});
+
+test("rotary arc solving rejects a measured length that leaves no complement", () => {
+  const totalArcMm = (Math.PI * 50 * 185) / 360;
+  const equal = resolveRotaryValveArcGeometry({
+    advanceBeforeTdcDeg: 120,
+    delayAfterTdcDeg: 65,
+    crankshaftDiameterMm: 50,
+    measuredArc: "crank-cutaway",
+    measuredArcMm: totalArcMm,
+  });
+  const longer = resolveRotaryValveArcGeometry({
+    advanceBeforeTdcDeg: 120,
+    delayAfterTdcDeg: 65,
+    crankshaftDiameterMm: 50,
+    measuredArc: "crank-cutaway",
+    measuredArcMm: totalArcMm + 1,
+  });
+
+  for (const result of [equal, longer]) {
+    assert.equal(result.value, null);
+    assert.ok(
+      result.diagnostics.some(
+        (item) => item.code === "ROTARY_MEASURED_ARC_LEAVES_NO_COMPLEMENT",
+      ),
+    );
+  }
 });
 
 test("crank cutaway and crankcase window arcs combine into inlet duration", () => {

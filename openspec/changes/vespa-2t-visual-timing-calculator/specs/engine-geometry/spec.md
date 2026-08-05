@@ -19,6 +19,25 @@ The system SHALL accept a positive stroke and a connecting-rod length measured c
 - **WHEN** a timing event is sourced from independently measured opening and closing angles and no linear conversion is requested
 - **THEN** the event remains usable without forcing the user to enter stroke or connecting-rod length
 
+### Requirement: Independent rotary sealing-track geometry for physical sizing
+For rotary induction the system SHALL require an effective rotary-valve sealing-track diameter greater than zero only when physical arc sizing is selected. Timing-only mode SHALL remain valid without that diameter. The system SHALL treat the diameter as an induction-geometry input distinct from cylinder bore, stroke, crank throw, connecting-rod length, and crankshaft journal diameter. Piston-controlled slider-crank geometry SHALL not be used to infer the diameter, and changing it SHALL not move cylinder-controlled port events.
+
+#### Scenario: Arc-sizing mode lacks a sealing-track diameter
+- **WHEN** rotary induction and physical arc-sizing mode are selected and the effective sealing-track diameter is blank, zero, negative, or non-finite
+- **THEN** the system reports a blocking rotary-geometry error and does not infer the diameter from any other engine dimension
+
+#### Scenario: Timing-only mode lacks a sealing-track diameter
+- **WHEN** rotary induction and timing-only mode are selected with valid desired opening and closing angles but no sealing-track diameter
+- **THEN** timing analysis remains available while circumference, physical component arcs, and cylindrical overlap area are marked unavailable
+
+#### Scenario: Change the rotary timing-track diameter
+- **WHEN** the user changes only the effective rotary-valve sealing-track diameter while stroke, connecting-rod length, and cylinder-port sources remain fixed
+- **THEN** circumference, desired total arc, and the derived complementary component are recalculated while the selected manual arc, desired rotary angles, piston travel, exhaust timing, and transfer timing remain unchanged
+
+#### Scenario: Shared crankcase timing-track assumption
+- **WHEN** the crankcase inlet-opening length is converted to degrees in the MVP
+- **THEN** the system projects it onto the entered crank-web sealing-track diameter and identifies that common-diameter relationship as an assumption rather than a separately measured crankcase diameter
+
 ### Requirement: Explicit measurement references
 The system SHALL support piston travel from TDC, port-roof height above BDC, and port-roof depth from the cylinder deck as distinct measurement references. Deck-referenced input SHALL also require the signed position of the piston crown edge relative to the deck at TDC.
 
@@ -138,6 +157,21 @@ The system SHALL accept an optional non-negative linear measurement uncertainty 
 #### Scenario: Uncertainty crosses a physical boundary
 - **WHEN** the uncertainty range extends outside 0 mm to the entered stroke
 - **THEN** the system reports the invalid part of the range and does not silently clip it
+
+### Requirement: Optional rotary physical-measurement bounds
+In physical arc-sizing mode, the system SHALL accept optional bounded uncertainty for sealing-track diameter, the selected manual component arc, and the measured common axial overlap width. It SHALL retain the nominal measurements as authority, validate every supplied bound against the physical domain, and SHALL NOT invent a default tolerance when no bound is supplied.
+
+#### Scenario: Rotary dimensions include stated uncertainty
+- **WHEN** the user supplies valid nominal diameter, manual arc, and axial overlap width values with non-negative stated uncertainties
+- **THEN** the system retains each nominal input and makes its explicit lower and upper measurement bounds available to dependent complementary-arc, overlap-area, angle-area, and time-area calculations
+
+#### Scenario: Rotary dimensions remain point measurements
+- **WHEN** the user supplies a rotary diameter, manual arc, or axial overlap width without uncertainty
+- **THEN** the supplied value remains a point measurement and the system does not infer instrument precision or fabricate a range
+
+#### Scenario: Rotary uncertainty reaches an impossible dimension
+- **WHEN** a stated uncertainty allows a non-positive diameter, manual arc, or axial overlap width, or makes a component solve physically invalid
+- **THEN** the system identifies the invalid bound and withholds the dependent uncertainty interval without clipping or replacing the source measurement
 
 ### Requirement: Geometry model disclosure
 The system SHALL identify calculated piston timing as a centred, rigid slider-crank result and SHALL state that crown shape, chamfers, piston rocking, clearances, and lateral cranktrain offset are not included in the standard model.

@@ -5,6 +5,9 @@ import {
   MAX_PROJECT_BYTES,
   MAX_SHARE_FRAGMENT_LENGTH,
   LEGACY_PROJECT_STORAGE_KEY,
+  LEGACY_SCHEMA_2_PROJECT_STORAGE_KEY,
+  LEGACY_SCHEMA_3_PROJECT_STORAGE_KEY,
+  LEGACY_SCHEMA_4_PROJECT_STORAGE_KEY,
   PROJECT_SCHEMA_VERSION,
   PROJECT_STORAGE_KEY,
   cloneDemonstrationProject,
@@ -54,10 +57,41 @@ class FailingStorage implements StorageLike {
   }
 }
 
+function legacyProject(version: 1 | 2 | 3 | 4): Record<string, unknown> {
+  const project = cloneDemonstrationProject() as unknown as Record<string, unknown>;
+  const induction = project.induction as Record<string, unknown>;
+  project.schemaVersion = version;
+  delete project.character;
+  delete induction.areaSource;
+  delete induction.commonAxialOverlapWidthMm;
+  induction.effectiveWindowAreaMm2 = "125";
+  if (version < 4) {
+    induction.crankCutawayArcMm = "95";
+    induction.crankcaseWindowArcMm = "43.9";
+    induction.arcAnchor = "opening-btdc";
+    induction.arcAnchorAngleDeg = "125";
+    delete induction.measuredArc;
+    delete induction.measuredArcMm;
+  }
+  if (version < 3) delete project.report;
+  if (version === 1) {
+    delete induction.timingSource;
+    delete induction.crankshaftDiameterMm;
+    delete induction.crankCutawayArcMm;
+    delete induction.crankcaseWindowArcMm;
+    delete induction.arcAnchor;
+    delete induction.arcAnchorAngleDeg;
+  }
+  return project;
+}
+
 test("saves, restores and clears the authoritative project", () => {
   const storage = new FakeStorage();
   const project = cloneDemonstrationProject();
   project.name = "Città setup 🔧";
+  project.report.projectCode = "P360-LOCAL";
+  project.report.projectDate = "2026-08-05";
+  project.report.engineDetails = "Cylinder and crankshaft\nRotary induction\nRoad exhaust";
 
   const empty = loadProjectFromStorage(storage);
   assert.equal(empty.ok, true);
@@ -71,23 +105,75 @@ test("saves, restores and clears the authoritative project", () => {
   assert.equal(restored.status, "loaded");
   if (restored.ok) assert.deepEqual(restored.project, project);
 
+  storage.values.set(LEGACY_SCHEMA_3_PROJECT_STORAGE_KEY, "legacy-3");
+  storage.values.set(LEGACY_SCHEMA_4_PROJECT_STORAGE_KEY, "legacy-4");
+  storage.values.set(LEGACY_SCHEMA_2_PROJECT_STORAGE_KEY, "legacy-2");
+  storage.values.set(LEGACY_PROJECT_STORAGE_KEY, "legacy-1");
   assert.equal(clearProjectFromStorage(storage).ok, true);
   assert.equal(storage.values.has(PROJECT_STORAGE_KEY), false);
+  assert.equal(storage.values.has(LEGACY_SCHEMA_3_PROJECT_STORAGE_KEY), false);
+  assert.equal(storage.values.has(LEGACY_SCHEMA_4_PROJECT_STORAGE_KEY), false);
+  assert.equal(storage.values.has(LEGACY_SCHEMA_2_PROJECT_STORAGE_KEY), false);
+  assert.equal(storage.values.has(LEGACY_PROJECT_STORAGE_KEY), false);
+});
+
+test("restores a schema version 2 project from its legacy storage key", () => {
+  const storage = new FakeStorage();
+  const legacy = legacyProject(2);
+  storage.values.set(LEGACY_SCHEMA_2_PROJECT_STORAGE_KEY, JSON.stringify(legacy));
+
+  const restored = loadProjectFromStorage(storage);
+
+  assert.equal(restored.ok, true);
+  assert.equal(restored.status, "loaded");
+  if (restored.ok && restored.project) {
+    assert.equal(restored.project.schemaVersion, PROJECT_SCHEMA_VERSION);
+    assert.deepEqual(restored.project.report, {
+      projectCode: "",
+      projectDate: "",
+      engineDetails: "",
+    });
+  }
+});
+
+test("prefers the schema version 3 storage key during fallback", () => {
+  const storage = new FakeStorage();
+  const schema3 = legacyProject(3);
+  schema3.name = "Schema 3 project";
+  const schema2 = legacyProject(2);
+  schema2.name = "Schema 2 project";
+  storage.values.set(LEGACY_SCHEMA_3_PROJECT_STORAGE_KEY, JSON.stringify(schema3));
+  storage.values.set(LEGACY_SCHEMA_2_PROJECT_STORAGE_KEY, JSON.stringify(schema2));
+
+  const restored = loadProjectFromStorage(storage);
+
+  assert.equal(restored.ok, true);
+  if (restored.ok) assert.equal(restored.project?.name, "Schema 3 project");
+});
+
+test("prefers and migrates the schema version 4 storage key", () => {
+  const storage = new FakeStorage();
+  const schema4 = legacyProject(4);
+  schema4.name = "Schema 4 project";
+  const schema3 = legacyProject(3);
+  schema3.name = "Schema 3 project";
+  storage.values.set(LEGACY_SCHEMA_4_PROJECT_STORAGE_KEY, JSON.stringify(schema4));
+  storage.values.set(LEGACY_SCHEMA_3_PROJECT_STORAGE_KEY, JSON.stringify(schema3));
+
+  const restored = loadProjectFromStorage(storage);
+
+  assert.equal(restored.ok, true);
+  if (restored.ok && restored.project) {
+    assert.equal(restored.project.name, "Schema 4 project");
+    assert.equal(restored.project.character.profile, "none");
+    assert.equal(restored.project.induction.areaSource, "constant-area");
+    assert.equal(restored.project.induction.effectiveWindowAreaMm2, "125");
+  }
 });
 
 test("restores and migrates a legacy storage project", () => {
   const storage = new FakeStorage();
-  const legacy = cloneDemonstrationProject() as unknown as {
-    schemaVersion: number;
-    induction: Record<string, unknown>;
-  };
-  legacy.schemaVersion = 1;
-  delete legacy.induction.timingSource;
-  delete legacy.induction.crankshaftDiameterMm;
-  delete legacy.induction.crankCutawayArcMm;
-  delete legacy.induction.crankcaseWindowArcMm;
-  delete legacy.induction.arcAnchor;
-  delete legacy.induction.arcAnchorAngleDeg;
+  const legacy = legacyProject(1);
   storage.values.set(LEGACY_PROJECT_STORAGE_KEY, JSON.stringify(legacy));
 
   const restored = loadProjectFromStorage(storage);
@@ -120,7 +206,7 @@ test("reports storage failures and invalid stored state without throwing", () =>
 
 test("does not save, export or share an invalid active rotary source", () => {
   const project = cloneDemonstrationProject();
-  project.induction.crankcaseWindowArcMm = "0";
+  project.induction.measuredArcMm = "200";
   const storage = new FakeStorage();
 
   assert.equal(saveProjectToStorage(project, storage).ok, false);
@@ -179,6 +265,9 @@ test("prepares a Unicode-safe JSON Blob and a sanitised filename", async () => {
 test("builds a private fragment URL and reconstructs the same project", () => {
   const project = cloneDemonstrationProject();
   project.name = "Officina 🔧";
+  project.report.projectCode = "OFF-51";
+  project.report.projectDate = "2026-08-05";
+  project.report.engineDetails = "Cylinder and ports\nRotary inlet\nDyno configuration";
   const shared = buildProjectShareUrl(
     project,
     "https://example.test/tools/phase360?mode=study#old-state",

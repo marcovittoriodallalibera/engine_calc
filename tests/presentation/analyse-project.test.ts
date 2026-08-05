@@ -22,15 +22,15 @@ test("demonstration project produces a complete integrated analysis", () => {
   assert.equal(result.ports.every((port) => port.angleAreaMm2Deg !== null), true);
 });
 
-test("direct timing and equivalent crank-and-case arcs drive identical rotary analysis", () => {
+test("desired timing and the solved arc geometry drive identical rotary analysis", () => {
   const project = cloneDemonstrationProject();
   project.induction.advanceBtdcDeg = "120";
   project.induction.delayAtdcDeg = "65";
   project.induction.crankshaftDiameterMm = "50";
-  project.induction.crankCutawayArcMm = String((Math.PI * 50 * 150) / 360);
-  project.induction.crankcaseWindowArcMm = String((Math.PI * 50 * 35) / 360);
-  project.induction.arcAnchor = "opening-btdc";
-  project.induction.arcAnchorAngleDeg = "120";
+  project.induction.measuredArc = "crank-cutaway";
+  project.induction.measuredArcMm = String((Math.PI * 50 * 150) / 360);
+  project.induction.areaSource = "constant-area";
+  project.induction.effectiveWindowAreaMm2 = "120";
 
   project.induction.timingSource = "direct-angles";
   const direct = analyseProject(project);
@@ -48,62 +48,66 @@ test("direct timing and equivalent crank-and-case arcs drive identical rotary an
     direct.rotary?.tripleOverlapDeg ?? 0,
   );
   closeTo(
-    geometry.rotary?.idealisedAngleAreaMm2Deg ?? null,
-    direct.rotary?.idealisedAngleAreaMm2Deg ?? 0,
+    geometry.rotary?.overlapAngleAreaMm2Deg ?? null,
+    direct.rotary?.overlapAngleAreaMm2Deg ?? 0,
   );
-  closeTo(geometry.induction.geometry?.directDurationDifferenceDeg ?? null, 0);
+  closeTo(geometry.induction.geometry?.crankCutawayDeg ?? null, 150);
+  closeTo(geometry.induction.geometry?.crankcaseWindowDeg ?? null, 35);
   closeTo(geometry.induction.direct?.equivalentCombinedArcMm ?? null, (Math.PI * 50 * 185) / 360);
 });
 
-test("a larger crankshaft diameter shortens fixed arc timing while preserving its anchor", () => {
+test("a larger crankshaft diameter changes solved lengths without changing desired timing", () => {
   const project = cloneDemonstrationProject();
   project.induction.timingSource = "crank-and-case-arcs";
+  project.induction.advanceBtdcDeg = "120";
+  project.induction.delayAtdcDeg = "65";
   project.induction.crankshaftDiameterMm = "50";
-  project.induction.crankCutawayArcMm = "60";
-  project.induction.crankcaseWindowArcMm = "20";
-  project.induction.arcAnchor = "opening-btdc";
-  project.induction.arcAnchorAngleDeg = "100";
+  project.induction.measuredArc = "crank-cutaway";
+  project.induction.measuredArcMm = "60";
   const smaller = analyseProject(project);
 
   project.induction.crankshaftDiameterMm = "60";
   const larger = analyseProject(project);
 
-  assert.ok((larger.rotary?.durationDeg ?? 0) < (smaller.rotary?.durationDeg ?? 0));
-  closeTo(larger.rotary?.advanceBeforeTdcDeg ?? null, 100);
+  closeTo(larger.rotary?.durationDeg ?? null, smaller.rotary?.durationDeg ?? 0);
+  closeTo(larger.rotary?.advanceBeforeTdcDeg ?? null, 120);
+  closeTo(larger.rotary?.delayAfterTdcDeg ?? null, 65);
   assert.ok(
-    (larger.rotary?.delayAfterTdcDeg ?? Number.POSITIVE_INFINITY) <
-      (smaller.rotary?.delayAfterTdcDeg ?? 0),
+    (larger.induction.geometry?.combinedArcMm ?? 0) >
+      (smaller.induction.geometry?.combinedArcMm ?? 0),
+  );
+  assert.ok(
+    (larger.induction.geometry?.derivedArcMm ?? 0) >
+      (smaller.induction.geometry?.derivedArcMm ?? 0),
   );
 });
 
-test("arc contributions remain available when the phase anchor is missing", () => {
+test("desired timing remains visible while physical arc inputs are incomplete", () => {
   const project = cloneDemonstrationProject();
   project.induction.timingSource = "crank-and-case-arcs";
-  project.induction.arcAnchorAngleDeg = "";
+  project.induction.measuredArcMm = "";
 
   const result = analyseProject(project);
 
-  assert.ok((result.induction.geometry?.durationDeg ?? 0) > 0);
-  assert.equal(result.induction.geometry?.advanceBeforeTdcDeg, null);
-  assert.equal(result.induction.geometry?.delayAfterTdcDeg, null);
-  assert.equal(result.rotary, null);
-  assert.match(result.diagnostics.join(" "), /one timing anchor/u);
+  assert.equal(result.induction.geometry, null);
+  closeTo(result.rotary?.durationDeg ?? null, 178);
+  assert.match(result.diagnostics.join(" "), /one positive measured arc/u);
 });
 
-test("full-cycle arc warning remains visible while the phase anchor is missing", () => {
+test("full-cycle solved geometry retains its explicit warning", () => {
   const project = cloneDemonstrationProject();
   const circumference = Math.PI * 87;
   project.induction.timingSource = "crank-and-case-arcs";
+  project.induction.advanceBtdcDeg = "180";
+  project.induction.delayAtdcDeg = "180";
   project.induction.crankshaftDiameterMm = "87";
-  project.induction.crankCutawayArcMm = String(circumference / 3);
-  project.induction.crankcaseWindowArcMm = String((2 * circumference) / 3);
-  project.induction.arcAnchorAngleDeg = "";
+  project.induction.measuredArc = "crank-cutaway";
+  project.induction.measuredArcMm = String(circumference / 3);
 
   const result = analyseProject(project);
 
   assert.equal(result.induction.geometry?.durationDeg, 360);
   assert.match(result.diagnostics.join(" "), /full 360-degree cycle/u);
-  assert.match(result.diagnostics.join(" "), /one timing anchor/u);
 });
 
 test("equivalent source modes preserve the same physical port event", () => {
@@ -250,5 +254,231 @@ test("component clearance mode and reed mode remain explicit", () => {
       (transfer) => transfer.valveRelationship === "not-applicable",
     ),
     true,
+  );
+});
+
+test("signed inlet margin uses the worst transfer and keeps closing separate", () => {
+  const project = cloneDemonstrationProject();
+  project.induction.advanceBtdcDeg = "120";
+  project.induction.delayAtdcDeg = "55";
+  const earlierClose = analyseProject(project);
+  const margins = earlierClose.transfers
+    .map((transfer) => transfer.valveMarginDeg)
+    .filter((value): value is number => value !== null);
+
+  closeTo(earlierClose.rotary?.signedTransferMarginDeg ?? null, Math.max(...margins));
+  closeTo(earlierClose.rotary?.inletCloseAfterTdcDeg ?? null, 55);
+
+  project.induction.delayAtdcDeg = "80";
+  const laterClose = analyseProject(project);
+  closeTo(
+    laterClose.rotary?.signedTransferMarginDeg ?? null,
+    earlierClose.rotary?.signedTransferMarginDeg ?? 0,
+  );
+  closeTo(laterClose.rotary?.inletCloseAfterTdcDeg ?? null, 80);
+  closeTo(
+    (laterClose.rotary?.durationDeg ?? 0) -
+      (earlierClose.rotary?.durationDeg ?? 0),
+    25,
+  );
+});
+
+test("the sourced Vespa overlap heuristic warns above plus five degrees", () => {
+  const project = cloneDemonstrationProject();
+  project.character.profile = "none";
+  project.induction.advanceBtdcDeg = "130";
+  const result = analyseProject(project);
+  const advisory = result.advisories.find(
+    (candidate) => candidate.id === "profile-inlet-transfer-margin",
+  );
+
+  assert.ok((result.rotary?.signedTransferMarginDeg ?? 0) > 5);
+  assert.equal(advisory?.evidence, "profile-heuristic");
+  assert.equal(advisory?.tone, "strong");
+  assert.match(advisory?.message ?? "", /exceeds the conservative \+5 degree/u);
+  assert.match(advisory?.sourceUrl ?? "", /youtube\.com/u);
+});
+
+test("port uncertainty propagates through blowdown, margin and time-area bounds", () => {
+  const project = cloneDemonstrationProject();
+  const result = analyseProject(project);
+
+  assert.ok(result.timing.uncertainty);
+  assert.ok(
+    result.timing.uncertainty.globalBlowdownMinDeg <
+      (result.timing.globalBlowdownDeg ?? 0),
+  );
+  assert.ok(
+    result.timing.uncertainty.globalBlowdownMaxDeg >
+      (result.timing.globalBlowdownDeg ?? 0),
+  );
+  assert.ok(result.timing.uncertainty.blowdownSpecificTimeAreaMin !== null);
+  assert.ok(result.timing.uncertainty.blowdownSpecificTimeAreaMax !== null);
+  assert.ok(result.rotary?.signedTransferMarginUncertainty);
+});
+
+test("rotary measurement bounds propagate through the complementary arc and area", () => {
+  const project = cloneDemonstrationProject();
+  project.induction.advanceBtdcDeg = "120";
+  project.induction.delayAtdcDeg = "60";
+  project.induction.crankshaftDiameterMm = "100";
+  project.induction.crankshaftDiameterUncertaintyMm = "1";
+  project.induction.measuredArc = "crank-cutaway";
+  project.induction.measuredArcMm = "79";
+  project.induction.measuredArcUncertaintyMm = "2";
+  project.induction.areaSource = "cylindrical-overlap";
+  project.induction.commonAxialOverlapWidthMm = "10";
+  project.induction.commonAxialOverlapWidthUncertaintyMm = "1";
+
+  const result = analyseProject(project);
+  const geometry = result.induction.geometry;
+  const area = result.rotary?.areaUncertainty;
+
+  assert.equal(geometry?.uncertaintyStatus, "available");
+  assert.ok(geometry?.uncertainty);
+  closeTo(
+    geometry?.uncertainty?.derivedArcMm.minimum ?? null,
+    Math.PI * 99 * 0.5 - 81,
+  );
+  closeTo(
+    geometry?.uncertainty?.derivedArcMm.maximum ?? null,
+    Math.PI * 101 * 0.5 - 77,
+  );
+  assert.equal(area?.provenance.method, "deterministic-worst-case");
+  assert.match(area?.provenance.statement ?? "", /No probability distribution/u);
+
+  const areaWithoutWidth = (diameterMm: number, measuredArcMm: number) =>
+    measuredArcMm *
+    (Math.PI * diameterMm * 0.5 - measuredArcMm) *
+    (360 / (Math.PI * diameterMm));
+  const expectedMinimum =
+    9 * Math.min(areaWithoutWidth(99, 77), areaWithoutWidth(99, 81));
+  const stationaryArc = Math.PI * 101 * 0.5 * 0.5;
+  const expectedMaximum = 11 * areaWithoutWidth(101, stationaryArc);
+  closeTo(area?.overlapAngleAreaMm2Deg.minimum ?? null, expectedMinimum);
+  closeTo(area?.overlapAngleAreaMm2Deg.maximum ?? null, expectedMaximum);
+  assert.ok(area?.overlapSpecificTimeArea);
+
+  for (const sample of result.rotary?.areaSamples ?? []) {
+    assert.notEqual(sample.minimumOpenAreaMm2, null);
+    assert.notEqual(sample.maximumOpenAreaMm2, null);
+    assert.ok((sample.minimumOpenAreaMm2 ?? Infinity) <= sample.openAreaMm2);
+    assert.ok((sample.maximumOpenAreaMm2 ?? -Infinity) >= sample.openAreaMm2);
+  }
+  const rotarySeries = result.characterGeometry?.series.find(
+    (series) => series.id === "rotary-inlet",
+  );
+  assert.ok(rotarySeries);
+  assert.equal(
+    rotarySeries?.samples.every(
+      (sample) => sample.minimum !== null && sample.maximum !== null,
+    ),
+    true,
+  );
+});
+
+test("rotary uncertainty is withheld when its bounds leave the physical domain", () => {
+  const project = cloneDemonstrationProject();
+  project.induction.crankshaftDiameterUncertaintyMm = "87";
+
+  const result = analyseProject(project);
+
+  assert.equal(result.induction.geometry?.uncertaintyStatus, "outside-domain");
+  assert.equal(result.induction.geometry?.uncertainty, null);
+  assert.equal(result.rotary?.areaUncertainty, null);
+  assert.ok((result.rotary?.overlapAngleAreaMm2Deg ?? 0) > 0);
+  assert.match(result.diagnostics.join(" "), /leave the positive complementary-arc domain/u);
+});
+
+test("constant-area projects remain compatible without inventing rotary area bounds", () => {
+  const project = cloneDemonstrationProject();
+  project.induction.areaSource = "constant-area";
+  project.induction.effectiveWindowAreaMm2 = "123";
+
+  const result = analyseProject(project);
+
+  closeTo(
+    result.rotary?.overlapAngleAreaMm2Deg ?? null,
+    123 * (120 + 58),
+  );
+  assert.equal(result.rotary?.areaModel, "constant-area");
+  assert.equal(result.rotary?.areaUncertainty, null);
+  assert.equal(
+    result.rotary?.areaSamples.every(
+      (sample) =>
+        sample.minimumOpenAreaMm2 === null &&
+        sample.maximumOpenAreaMm2 === null,
+    ),
+    true,
+  );
+});
+
+test("the plus-five heuristic is indeterminate when measurement bounds cross it", () => {
+  const project = cloneDemonstrationProject();
+  const baseline = analyseProject(project);
+  const baselineMargin = baseline.rotary?.signedTransferMarginDeg ?? 0;
+  project.induction.advanceBtdcDeg = String(120 + (5 - baselineMargin));
+
+  const result = analyseProject(project);
+  const advisory = result.advisories.find(
+    (candidate) => candidate.id === "profile-inlet-transfer-margin",
+  );
+
+  assert.ok(
+    (result.rotary?.signedTransferMarginUncertainty?.minimumDeg ?? Infinity) <=
+      5,
+  );
+  assert.ok(
+    (result.rotary?.signedTransferMarginUncertainty?.maximumDeg ?? -Infinity) >
+      5,
+  );
+  assert.equal(advisory?.tone, "caution");
+  assert.match(advisory?.message ?? "", /indeterminate/u);
+});
+
+test("changing only the profile leaves every calculated geometry result unchanged", () => {
+  const project = cloneDemonstrationProject();
+  project.character.profile = "touring-box";
+  const touring = analyseProject(project);
+  project.character.profile = "race-expansion";
+  const race = analyseProject(project);
+
+  assert.deepEqual(race.ports, touring.ports);
+  assert.deepEqual(race.timing, touring.timing);
+  assert.deepEqual(race.rotary, touring.rotary);
+  assert.notDeepEqual(race.character, touring.character);
+});
+
+test("character geometry uses real area units over the bounded RPM sweep", () => {
+  const project = cloneDemonstrationProject();
+  project.character.rpmMinimum = "4000";
+  project.character.rpmMaximum = "5000";
+  project.character.rpmStep = "500";
+  const result = analyseProject(project);
+
+  assert.ok(result.characterGeometry);
+  assert.deepEqual(
+    result.characterGeometry.series[0].samples.map((sample) => sample.rpm),
+    [4000, 4500, 5000],
+  );
+  for (const series of result.characterGeometry.series) {
+    assert.ok(
+      series.samples[0].specificTimeArea >
+        series.samples.at(-1)!.specificTimeArea,
+    );
+  }
+  assert.equal(
+    result.advisories.some(
+      (advisory) => advisory.evidence === "profile-heuristic",
+    ),
+    true,
+  );
+  assert.deepEqual(
+    new Set(result.advisories.map((advisory) => advisory.evidence)),
+    new Set([
+      "calculated-geometry",
+      "profile-heuristic",
+      "measured-or-modelled",
+    ]),
   );
 });

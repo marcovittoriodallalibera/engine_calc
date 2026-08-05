@@ -1,8 +1,18 @@
-export const PROJECT_SCHEMA_VERSION = 2 as const;
-export const PROJECT_STORAGE_KEY = "phase360.project.v2";
+export const PROJECT_SCHEMA_VERSION = 5 as const;
+export const PROJECT_STORAGE_KEY = "phase360.project.v5";
+export const LEGACY_SCHEMA_4_PROJECT_STORAGE_KEY = "phase360.project.v4";
+export const LEGACY_SCHEMA_3_PROJECT_STORAGE_KEY = "phase360.project.v3";
+export const LEGACY_SCHEMA_2_PROJECT_STORAGE_KEY = "phase360.project.v2";
 export const LEGACY_PROJECT_STORAGE_KEY = "phase360.project.v1";
+export const LEGACY_PROJECT_STORAGE_KEYS = [
+  LEGACY_SCHEMA_4_PROJECT_STORAGE_KEY,
+  LEGACY_SCHEMA_3_PROJECT_STORAGE_KEY,
+  LEGACY_SCHEMA_2_PROJECT_STORAGE_KEY,
+  LEGACY_PROJECT_STORAGE_KEY,
+] as const;
 export const MAX_PROJECT_BYTES = 48_000;
 export const MAX_SHARE_FRAGMENT_LENGTH = 7_500;
+export const PROFILE_REFERENCE_SET_VERSION = "phase360-profile-lens-1";
 
 export type PortKind =
   | "exhaust"
@@ -19,7 +29,14 @@ export type PortSourceMode =
 
 export type InductionMode = "rotary" | "reed" | "none";
 export type RotaryTimingSource = "direct-angles" | "crank-and-case-arcs";
-export type RotaryArcAnchor = "opening-btdc" | "closing-atdc";
+export type RotaryMeasuredArc = "crank-cutaway" | "crankcase-opening";
+export type RotaryAreaSource = "constant-area" | "cylindrical-overlap";
+export type CharacterProfile =
+  | "none"
+  | "touring-box"
+  | "sport-box"
+  | "road-expansion"
+  | "race-expansion";
 
 export interface PortDraft {
   id: string;
@@ -37,6 +54,11 @@ export interface PortDraft {
 export interface EngineProjectDraft {
   schemaVersion: typeof PROJECT_SCHEMA_VERSION;
   name: string;
+  report: {
+    projectCode: string;
+    projectDate: string;
+    engineDetails: string;
+  };
   geometry: {
     boreMm: string;
     strokeMm: string;
@@ -51,11 +73,21 @@ export interface EngineProjectDraft {
     advanceBtdcDeg: string;
     delayAtdcDeg: string;
     crankshaftDiameterMm: string;
-    crankCutawayArcMm: string;
-    crankcaseWindowArcMm: string;
-    arcAnchor: RotaryArcAnchor;
-    arcAnchorAngleDeg: string;
+    crankshaftDiameterUncertaintyMm: string;
+    measuredArc: RotaryMeasuredArc;
+    measuredArcMm: string;
+    measuredArcUncertaintyMm: string;
+    areaSource: RotaryAreaSource;
     effectiveWindowAreaMm2: string;
+    commonAxialOverlapWidthMm: string;
+    commonAxialOverlapWidthUncertaintyMm: string;
+  };
+  character: {
+    profile: CharacterProfile;
+    referenceSetVersion: string;
+    rpmMinimum: string;
+    rpmMaximum: string;
+    rpmStep: string;
   };
   compression: {
     volumeMode: "measured-total" | "component-breakdown";
@@ -89,6 +121,11 @@ export interface EngineProjectDraft {
 export const demonstrationProject: EngineProjectDraft = {
   schemaVersion: PROJECT_SCHEMA_VERSION,
   name: "Vespa 51 mm study",
+  report: {
+    projectCode: "",
+    projectDate: "",
+    engineDetails: "",
+  },
   geometry: {
     boreMm: "60",
     strokeMm: "51",
@@ -149,14 +186,24 @@ export const demonstrationProject: EngineProjectDraft = {
   induction: {
     mode: "rotary",
     timingSource: "crank-and-case-arcs",
-    advanceBtdcDeg: "125",
+    advanceBtdcDeg: "120",
     delayAtdcDeg: "58",
     crankshaftDiameterMm: "87",
-    crankCutawayArcMm: "95",
-    crankcaseWindowArcMm: "43.9",
-    arcAnchor: "opening-btdc",
-    arcAnchorAngleDeg: "125",
-    effectiveWindowAreaMm2: "180",
+    crankshaftDiameterUncertaintyMm: "0.10",
+    measuredArc: "crank-cutaway",
+    measuredArcMm: "95",
+    measuredArcUncertaintyMm: "0.10",
+    areaSource: "cylindrical-overlap",
+    effectiveWindowAreaMm2: "",
+    commonAxialOverlapWidthMm: "10",
+    commonAxialOverlapWidthUncertaintyMm: "0.10",
+  },
+  character: {
+    profile: "sport-box",
+    referenceSetVersion: PROFILE_REFERENCE_SET_VERSION,
+    rpmMinimum: "3000",
+    rpmMaximum: "11000",
+    rpmStep: "500",
   },
   compression: {
     volumeMode: "measured-total",
@@ -191,6 +238,29 @@ export function cloneDemonstrationProject(): EngineProjectDraft {
   return JSON.parse(JSON.stringify(demonstrationProject)) as EngineProjectDraft;
 }
 
+export function changeRotaryMeasuredArc(
+  induction: EngineProjectDraft["induction"],
+  measuredArc: RotaryMeasuredArc,
+  solvedGeometry: {
+    crankCutawayArcMm: number;
+    crankcaseWindowArcMm: number;
+  } | null,
+): EngineProjectDraft["induction"] {
+  if (measuredArc === induction.measuredArc) return induction;
+  const promotedMeasurement = solvedGeometry
+    ? measuredArc === "crank-cutaway"
+      ? solvedGeometry.crankCutawayArcMm
+      : solvedGeometry.crankcaseWindowArcMm
+    : null;
+  return {
+    ...induction,
+    measuredArc,
+    measuredArcMm:
+      promotedMeasurement === null ? "" : String(promotedMeasurement),
+    measuredArcUncertaintyMm: "",
+  };
+}
+
 export function parseLocaleNumber(value: string): number | null {
   const token = value.trim().replace(",", ".");
   if (!token || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(token)) {
@@ -204,8 +274,29 @@ function isText(value: unknown, maxLength: number): value is string {
   return typeof value === "string" && value.length <= maxLength;
 }
 
+function isOptionalNonNegativeNumberText(
+  value: unknown,
+  maxLength: number,
+): value is string {
+  if (!isText(value, maxLength)) return false;
+  if (value.trim() === "") return true;
+  const parsed = parseLocaleNumber(value);
+  return parsed !== null && parsed >= 0;
+}
+
 function isBoolean(value: unknown): value is boolean {
   return typeof value === "boolean";
+}
+
+function isValidIsoDate(value: string): boolean {
+  if (value === "") return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
+}
+
+function hasAtMostThreeLines(value: string): boolean {
+  return value.split(/\r\n?|\n/u).length <= 3;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -230,9 +321,20 @@ const rotaryTimingSources = new Set<RotaryTimingSource>([
   "direct-angles",
   "crank-and-case-arcs",
 ]);
-const rotaryArcAnchors = new Set<RotaryArcAnchor>([
-  "opening-btdc",
-  "closing-atdc",
+const rotaryMeasuredArcs = new Set<RotaryMeasuredArc>([
+  "crank-cutaway",
+  "crankcase-opening",
+]);
+const rotaryAreaSources = new Set<RotaryAreaSource>([
+  "constant-area",
+  "cylindrical-overlap",
+]);
+const characterProfiles = new Set<CharacterProfile>([
+  "none",
+  "touring-box",
+  "sport-box",
+  "road-expansion",
+  "race-expansion",
 ]);
 
 export type ProjectValidation =
@@ -243,7 +345,13 @@ export function validateProjectDocument(value: unknown): ProjectValidation {
   if (!isRecord(value)) {
     return { ok: false, message: "The project must be a JSON object." };
   }
-  if (value.schemaVersion !== 1 && value.schemaVersion !== PROJECT_SCHEMA_VERSION) {
+  if (
+    value.schemaVersion !== 1 &&
+    value.schemaVersion !== 2 &&
+    value.schemaVersion !== 3 &&
+    value.schemaVersion !== 4 &&
+    value.schemaVersion !== PROJECT_SCHEMA_VERSION
+  ) {
     return {
       ok: false,
       message:
@@ -255,6 +363,24 @@ export function validateProjectDocument(value: unknown): ProjectValidation {
   }
   if (!isText(value.name, 80)) {
     return { ok: false, message: "Project name is missing or too long." };
+  }
+  const schemaVersion = value.schemaVersion;
+  const report =
+    schemaVersion >= 3 && isRecord(value.report) ? value.report : null;
+  if (
+    schemaVersion >= 3 &&
+    (report === null ||
+      !isText(report.projectCode, 40) ||
+      !isText(report.projectDate, 10) ||
+      !isValidIsoDate(report.projectDate) ||
+      !isText(report.engineDetails, 360) ||
+      !hasAtMostThreeLines(report.engineDetails))
+  ) {
+    return {
+      ok: false,
+      message:
+        "Project report details must use a valid date and no more than three bounded lines.",
+    };
   }
   if (!isRecord(value.geometry)) {
     return { ok: false, message: "Engine geometry is missing." };
@@ -294,100 +420,239 @@ export function validateProjectDocument(value: unknown): ProjectValidation {
   if (!isRecord(value.induction) || !inductionModes.has(value.induction.mode as InductionMode)) {
     return { ok: false, message: "Induction configuration is invalid." };
   }
+  const legacyEffectiveWindowAreaMm2 =
+    schemaVersion < PROJECT_SCHEMA_VERSION
+      ? value.induction.effectiveWindowAreaMm2 ?? ""
+      : "";
+  const areaSource =
+    schemaVersion === PROJECT_SCHEMA_VERSION
+      ? value.induction.areaSource
+      : typeof legacyEffectiveWindowAreaMm2 === "string" &&
+          legacyEffectiveWindowAreaMm2.trim() !== ""
+        ? "constant-area"
+        : "cylindrical-overlap";
+  const effectiveWindowAreaMm2 =
+    schemaVersion === PROJECT_SCHEMA_VERSION
+      ? value.induction.effectiveWindowAreaMm2
+      : legacyEffectiveWindowAreaMm2;
+  const commonAxialOverlapWidthMm =
+    schemaVersion === PROJECT_SCHEMA_VERSION
+      ? value.induction.commonAxialOverlapWidthMm
+      : "";
+  const crankshaftDiameterUncertaintyMm =
+    schemaVersion === PROJECT_SCHEMA_VERSION
+      ? value.induction.crankshaftDiameterUncertaintyMm ?? ""
+      : "";
+  const measuredArcUncertaintyMm =
+    schemaVersion === PROJECT_SCHEMA_VERSION
+      ? value.induction.measuredArcUncertaintyMm ?? ""
+      : "";
+  const commonAxialOverlapWidthUncertaintyMm =
+    schemaVersion === PROJECT_SCHEMA_VERSION
+      ? value.induction.commonAxialOverlapWidthUncertaintyMm ?? ""
+      : "";
   if (
     !isText(value.induction.advanceBtdcDeg, 32) ||
     !isText(value.induction.delayAtdcDeg, 32) ||
-    !isText(value.induction.effectiveWindowAreaMm2, 32)
+    !rotaryAreaSources.has(areaSource as RotaryAreaSource) ||
+    !isText(effectiveWindowAreaMm2, 32) ||
+    !isText(commonAxialOverlapWidthMm, 32) ||
+    !isOptionalNonNegativeNumberText(
+      crankshaftDiameterUncertaintyMm,
+      32,
+    ) ||
+    !isOptionalNonNegativeNumberText(measuredArcUncertaintyMm, 32) ||
+    !isOptionalNonNegativeNumberText(
+      commonAxialOverlapWidthUncertaintyMm,
+      32,
+    )
   ) {
     return { ok: false, message: "Rotary inlet timing is invalid." };
   }
   const timingSource =
-    value.schemaVersion === 1 && value.induction.timingSource === undefined
+    schemaVersion === 1 && value.induction.timingSource === undefined
       ? "direct-angles"
       : value.induction.timingSource;
-  const arcAnchor =
-    value.schemaVersion === 1 && value.induction.arcAnchor === undefined
-      ? "opening-btdc"
-      : value.induction.arcAnchor;
   const crankshaftDiameterMm =
-    value.schemaVersion === 1
+    schemaVersion === 1
       ? value.induction.crankshaftDiameterMm ?? ""
       : value.induction.crankshaftDiameterMm;
-  const crankCutawayArcMm =
-    value.schemaVersion === 1
+  const legacyCrankArcMm =
+    schemaVersion === 1
       ? value.induction.crankCutawayArcMm ?? ""
       : value.induction.crankCutawayArcMm;
-  const crankcaseWindowArcMm =
-    value.schemaVersion === 1
+  const legacyCaseArcMm =
+    schemaVersion === 1
       ? value.induction.crankcaseWindowArcMm ?? ""
       : value.induction.crankcaseWindowArcMm;
-  const arcAnchorAngleDeg =
-    value.schemaVersion === 1
+  const legacyAnchor =
+    schemaVersion === 1 && value.induction.arcAnchor === undefined
+      ? "opening-btdc"
+      : value.induction.arcAnchor;
+  const legacyAnchorAngleDeg =
+    schemaVersion === 1
       ? value.induction.arcAnchorAngleDeg ?? ""
       : value.induction.arcAnchorAngleDeg;
+  const measuredArc =
+    schemaVersion >= 4
+      ? value.induction.measuredArc
+      : "crank-cutaway";
+  const measuredArcMm =
+    schemaVersion >= 4
+      ? value.induction.measuredArcMm
+      : legacyCrankArcMm;
   if (
     !rotaryTimingSources.has(timingSource as RotaryTimingSource) ||
-    !rotaryArcAnchors.has(arcAnchor as RotaryArcAnchor) ||
     !isText(crankshaftDiameterMm, 32) ||
-    !isText(crankCutawayArcMm, 32) ||
-    !isText(crankcaseWindowArcMm, 32) ||
-    !isText(arcAnchorAngleDeg, 32)
+    !rotaryMeasuredArcs.has(measuredArc as RotaryMeasuredArc) ||
+    !isText(measuredArcMm, 32)
   ) {
     return { ok: false, message: "Rotary inlet geometry is invalid." };
   }
+  if (
+    schemaVersion < 4 &&
+    (!isText(legacyCrankArcMm, 32) ||
+      !isText(legacyCaseArcMm, 32) ||
+      !isText(legacyAnchorAngleDeg, 32) ||
+      (legacyAnchor !== "opening-btdc" && legacyAnchor !== "closing-atdc"))
+  ) {
+    return { ok: false, message: "Legacy rotary inlet geometry is invalid." };
+  }
+
+  let advanceBtdcDeg = value.induction.advanceBtdcDeg;
+  let delayAtdcDeg = value.induction.delayAtdcDeg;
+  if (
+    schemaVersion < 4 &&
+    timingSource === "crank-and-case-arcs" &&
+    value.induction.mode === "rotary"
+  ) {
+    const diameter = parseLocaleNumber(crankshaftDiameterMm);
+    const crankArc = parseLocaleNumber(legacyCrankArcMm as string);
+    const caseArc = parseLocaleNumber(legacyCaseArcMm as string);
+    const anchorAngle = parseLocaleNumber(legacyAnchorAngleDeg as string);
+    const circumference = diameter === null ? null : Math.PI * diameter;
+    const tolerance =
+      circumference === null ? 0 : Math.max(1, circumference) * 1e-12;
+    if (
+      diameter === null ||
+      diameter <= 0 ||
+      crankArc === null ||
+      crankArc <= 0 ||
+      caseArc === null ||
+      caseArc <= 0 ||
+      anchorAngle === null ||
+      anchorAngle < 0 ||
+      circumference === null ||
+      crankArc + caseArc > circumference + tolerance
+    ) {
+      return {
+        ok: false,
+        message: "Legacy rotary arc geometry contains an invalid physical value.",
+      };
+    }
+    const durationDeg = ((crankArc + caseArc) * 360) / circumference;
+    if (anchorAngle > durationDeg + 1e-10) {
+      return {
+        ok: false,
+        message: "The legacy rotary timing anchor exceeds its duration.",
+      };
+    }
+    const advance =
+      legacyAnchor === "opening-btdc" ? anchorAngle : durationDeg - anchorAngle;
+    const delay =
+      legacyAnchor === "closing-atdc" ? anchorAngle : durationDeg - anchorAngle;
+    advanceBtdcDeg = String(advance);
+    delayAtdcDeg = String(delay);
+  }
+
   if (value.induction.mode === "rotary") {
-    const advance = parseLocaleNumber(value.induction.advanceBtdcDeg);
-    const delay = parseLocaleNumber(value.induction.delayAtdcDeg);
-    if (timingSource === "direct-angles") {
-      if (
-        advance === null ||
-        delay === null ||
-        advance < 0 ||
-        delay < 0 ||
-        advance + delay > 360
-      ) {
-        return {
-          ok: false,
-          message: "Direct rotary timing must define a valid opening and closing edge.",
-        };
-      }
-    } else {
+    const advance = parseLocaleNumber(advanceBtdcDeg);
+    const delay = parseLocaleNumber(delayAtdcDeg);
+    if (
+      advance === null ||
+      delay === null ||
+      advance < 0 ||
+      delay < 0 ||
+      advance + delay > 360
+    ) {
+      return {
+        ok: false,
+        message: "Rotary timing must define a valid desired opening and closing edge.",
+      };
+    }
+    if (
+      schemaVersion >= 4 &&
+      timingSource === "crank-and-case-arcs"
+    ) {
       const diameter = parseLocaleNumber(crankshaftDiameterMm);
-      const crankArc = parseLocaleNumber(crankCutawayArcMm);
-      const caseArc = parseLocaleNumber(crankcaseWindowArcMm);
-      const anchorAngle = parseLocaleNumber(arcAnchorAngleDeg);
+      const manualArc = parseLocaleNumber(measuredArcMm as string);
       const circumference = diameter === null ? null : Math.PI * diameter;
-      const tolerance = circumference === null ? 0 : Math.max(1, circumference) * 1e-12;
+      const requiredArc =
+        circumference === null ? null : (circumference * (advance + delay)) / 360;
+      const tolerance =
+        circumference === null || requiredArc === null
+          ? 0
+          : Math.max(1, circumference, requiredArc) * 1e-12;
       if (
         diameter === null ||
         diameter <= 0 ||
-        crankArc === null ||
-        crankArc <= 0 ||
-        caseArc === null ||
-        caseArc <= 0 ||
-        anchorAngle === null ||
-        anchorAngle < 0 ||
+        manualArc === null ||
+        manualArc <= 0 ||
+        advance + delay <= 0 ||
         circumference === null ||
-        crankArc > circumference + tolerance ||
-        caseArc > circumference + tolerance ||
-        crankArc + caseArc > circumference + tolerance
+        requiredArc === null ||
+        requiredArc - manualArc <= tolerance
       ) {
         return {
           ok: false,
-          message: "Rotary arc geometry contains an invalid physical value.",
-        };
-      }
-      const durationDeg = ((crankArc + caseArc) * 360) / circumference;
-      if (anchorAngle > durationDeg + 1e-10) {
-        return {
-          ok: false,
-          message: "The rotary timing anchor exceeds the arc-derived duration.",
+          message:
+            "Rotary geometry requires a positive diameter, a positive measured arc and a positive calculated counterpart.",
         };
       }
     }
   }
   if (!isRecord(value.compression) || !isRecord(value.squish) || !isRecord(value.presentation)) {
     return { ok: false, message: "Compression, squish or display data is missing." };
+  }
+  const character =
+    schemaVersion === PROJECT_SCHEMA_VERSION && isRecord(value.character)
+      ? value.character
+      : null;
+  const characterProfile = character === null ? "none" : character.profile;
+  const characterReferenceSetVersion =
+    character === null
+      ? PROFILE_REFERENCE_SET_VERSION
+      : character.referenceSetVersion;
+  const characterRpmMinimum = character === null ? "3000" : character.rpmMinimum;
+  const characterRpmMaximum = character === null ? "11000" : character.rpmMaximum;
+  const characterRpmStep = character === null ? "500" : character.rpmStep;
+  if (
+    !characterProfiles.has(characterProfile as CharacterProfile) ||
+    !isText(characterReferenceSetVersion, 48) ||
+    !isText(characterRpmMinimum, 32) ||
+    !isText(characterRpmMaximum, 32) ||
+    !isText(characterRpmStep, 32)
+  ) {
+    return { ok: false, message: "Engine character profile is invalid." };
+  }
+  const rpmMinimum = parseLocaleNumber(characterRpmMinimum as string);
+  const rpmMaximum = parseLocaleNumber(characterRpmMaximum as string);
+  const rpmStep = parseLocaleNumber(characterRpmStep as string);
+  if (
+    rpmMinimum === null ||
+    rpmMaximum === null ||
+    rpmStep === null ||
+    rpmMinimum < 500 ||
+    rpmMaximum > 20_000 ||
+    rpmMaximum <= rpmMinimum ||
+    rpmStep < 100 ||
+    rpmStep > 2_000 ||
+    (rpmMaximum - rpmMinimum) / rpmStep > 80
+  ) {
+    return {
+      ok: false,
+      message: "The engine-character RPM sweep is invalid or too large.",
+    };
   }
   const compression = value.compression;
   const squish = value.squish;
@@ -442,6 +707,18 @@ export function validateProjectDocument(value: unknown): ProjectValidation {
     project: {
       schemaVersion: PROJECT_SCHEMA_VERSION,
       name: value.name,
+      report:
+        report === null
+          ? {
+              projectCode: "",
+              projectDate: "",
+              engineDetails: "",
+            }
+          : {
+              projectCode: report.projectCode as string,
+              projectDate: report.projectDate as string,
+              engineDetails: (report.engineDetails as string).replace(/\r\n?/gu, "\n"),
+            },
       geometry: {
         boreMm: geometry.boreMm as string,
         strokeMm: geometry.strokeMm as string,
@@ -467,14 +744,24 @@ export function validateProjectDocument(value: unknown): ProjectValidation {
       induction: {
         mode: value.induction.mode as InductionMode,
         timingSource: timingSource as RotaryTimingSource,
-        advanceBtdcDeg: value.induction.advanceBtdcDeg,
-        delayAtdcDeg: value.induction.delayAtdcDeg,
+        advanceBtdcDeg,
+        delayAtdcDeg,
         crankshaftDiameterMm,
-        crankCutawayArcMm,
-        crankcaseWindowArcMm,
-        arcAnchor: arcAnchor as RotaryArcAnchor,
-        arcAnchorAngleDeg,
-        effectiveWindowAreaMm2: value.induction.effectiveWindowAreaMm2,
+        crankshaftDiameterUncertaintyMm,
+        measuredArc: measuredArc as RotaryMeasuredArc,
+        measuredArcMm: measuredArcMm as string,
+        measuredArcUncertaintyMm,
+        areaSource: areaSource as RotaryAreaSource,
+        effectiveWindowAreaMm2: effectiveWindowAreaMm2 as string,
+        commonAxialOverlapWidthMm: commonAxialOverlapWidthMm as string,
+        commonAxialOverlapWidthUncertaintyMm,
+      },
+      character: {
+        profile: characterProfile as CharacterProfile,
+        referenceSetVersion: characterReferenceSetVersion as string,
+        rpmMinimum: characterRpmMinimum as string,
+        rpmMaximum: characterRpmMaximum as string,
+        rpmStep: characterRpmStep as string,
       },
       compression: {
         volumeMode: compression.volumeMode as EngineProjectDraft["compression"]["volumeMode"],

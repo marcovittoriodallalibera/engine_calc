@@ -60,24 +60,79 @@ The workbench SHALL visually distinguish authoritative inputs, derived values, m
 - **WHEN** an asymmetric measured event cannot produce one linear port height
 - **THEN** the unavailable height is explained rather than shown as zero or a guessed value
 
-### Requirement: Rotary timing source bridge
-The workbench SHALL let the user choose direct timing angles or crank-and-crankcase arc geometry as the authoritative rotary source. It SHALL show crank arc, crankcase arc, combined physical length, each angular contribution, combined duration, anchored edge and derived edge together so the correspondence remains inspectable without relying on the diagram.
+### Requirement: Rotary desired-timing and manual-component bridge
+For rotary induction the workbench SHALL present desired opening advance before TDC and closing delay after TDC as the timing controls and SHALL offer timing-only and physical arc-sizing modes. Arc-sizing mode SHALL require an effective rotary-valve sealing-track diameter rather than a nominal journal diameter. It SHALL let the user choose exactly one manual physical measurement, either open crank cut-away arc or crankcase inlet-opening arc. The other component SHALL be visibly calculated, read-only, and updated from the desired total arc. The bridge SHALL show desired angles, duration, circumference, total required arc, both component lengths, both angular contributions, and source provenance without relying on the diagram.
 
-#### Scenario: Edit physical rotary geometry
-- **WHEN** the user changes crankshaft diameter, crank cut-away arc, crankcase opening arc or the active anchor
-- **THEN** the converted component angles, derived edge, timing map, overlap, signed margins and time-area update in the same interaction cycle
+#### Scenario: Use timing-only mode
+- **WHEN** the user selects timing-only mode and enters valid desired opening and closing angles
+- **THEN** the timing map and timing relationships remain available while physical arc inputs and claims are not required
 
-#### Scenario: Compare with direct timing
-- **WHEN** valid direct timing and valid arc geometry are both present
-- **THEN** the workbench shows their duration difference while using only the selected source for downstream calculation
+#### Scenario: Enter crank cut-away measurement
+- **WHEN** the user selects crank cut-away as the manual source and enters a valid true arc length
+- **THEN** the crankcase opening field is read-only, is labelled calculated, and updates with total arc, timing map, overlap, signed margins, and time-area in the same interaction cycle
 
-#### Scenario: Switch phase anchor
-- **WHEN** the user changes from opening-fixed to closing-fixed while valid geometry is available
-- **THEN** the newly authoritative anchor begins from the previously derived full-precision edge so the event does not jump solely because the anchor mode changed
+#### Scenario: Enter crankcase opening measurement
+- **WHEN** the user selects crankcase opening as the manual source and enters a valid true arc length
+- **THEN** the crank cut-away field is read-only, is labelled calculated, and the same downstream results update in the same interaction cycle
+
+#### Scenario: Diameter is visibly required
+- **WHEN** rotary induction and physical arc-sizing mode are selected
+- **THEN** the sealing-track diameter is shown as required, its common-diameter assumption is adjacent to the physical inputs, and no other engine diameter is substituted when it is blank or invalid
+
+#### Scenario: Measurement guidance follows authority
+- **WHEN** either manual component is selected
+- **THEN** guidance identifies the relevant curved sealing-track path, distinguishes open cut-away arc length from the remaining solid shoulder and from a straight chord, and states that the crankcase timing-track diameter is assumed equal to the crank-web timing-track diameter
+
+#### Scenario: Switch manual component with a valid solve
+- **WHEN** the user changes manual authority while the current complement is valid
+- **THEN** the newly editable field begins with the previous full-precision calculated complement, the other field becomes read-only, and neither component nor the timing diagram jumps solely because authority changed
+
+#### Scenario: Switch manual component without a valid solve
+- **WHEN** the user changes manual authority before a valid complement exists
+- **THEN** the old numeric token is not relabelled, the new manual field is blank or restores only its own draft, and an actionable incomplete state replaces fabricated geometry
+
+#### Scenario: Desired timing recalculates the complement
+- **WHEN** the user edits opening advance or closing delay while diameter and the selected manual arc are valid
+- **THEN** duration, total arc, the read-only complementary length, both component degrees, timing map, overlap, signed margins, and time-area update in the same interaction cycle while the manual length remains unchanged
+
+#### Scenario: Non-positive calculated complement
+- **WHEN** the selected manual measurement equals or exceeds the total arc implied by desired timing
+- **THEN** the calculated field shows a blocking incompatibility instead of zero or a negative physical length, desired timing remains visibly identifiable, and save, share, export, and print remain ineligible while arc-sizing mode is active
+
+#### Scenario: Calculated complement exceeds circumference
+- **WHEN** the solve produces a complementary length beyond one circumference
+- **THEN** the calculated field identifies the one-cycle boundary, no clamped physical geometry is presented, and desired timing remains distinct from the invalid physical solve
+
+#### Scenario: Full-cycle rotary opening
+- **WHEN** desired opening advance plus closing delay equals exactly 360 degrees and both components remain positive and within one circumference
+- **THEN** the 360-degree duration and one-circumference total remain visible and a non-blocking warning states that the idealised model has no positive-duration closed interval
 
 #### Scenario: Accessible numeric alternative
-- **WHEN** the arc-derived inlet is drawn on the 360-degree timing diagram
-- **THEN** a semantic table also identifies source, opening, closing, duration, physical lengths and converted angular contributions
+- **WHEN** the solved rotary inlet is drawn on the 360-degree timing diagram
+- **THEN** the semantic timing and conversion representations identify opening, closing, duration, sealing-track diameter, circumference, total arc, manual component, read-only component, and both converted angular contributions
+
+#### Scenario: Non-rotary induction mode
+- **WHEN** reed induction or no induction analysis is selected
+- **THEN** rotary desired-timing and component-solver controls are not presented as applicable while cylinder-port calculations remain available
+
+### Requirement: Rotary inlet area controls and geometric curve
+The workbench SHALL provide an explicit rotary area-source control for `constant-area` and `cylindrical-overlap`. Constant-area mode SHALL request the entered approximation in square millimetres. Cylindrical-overlap mode SHALL be available only with physical arc sizing and SHALL request a measured positive common axial overlap width, with optional stated uncertainty, beside its measurement guidance. The result SHALL show the selected source, area-versus-angle curve, angle-area, applicable specific time-area, and its model boundary.
+
+#### Scenario: Select cylindrical-overlap area
+- **WHEN** physical arc sizing is valid and the user selects cylindrical overlap and enters a valid common axial width
+- **THEN** the workbench updates the geometric rotary overlap-area curve, angle-area, specific time-area, uncertainty envelope, and accessible numeric table in the same interaction cycle
+
+#### Scenario: Width or physical geometry is missing
+- **WHEN** cylindrical overlap is selected but common axial width or a required physical arc value is incomplete
+- **THEN** affected area results show an actionable unavailable state while desired timing, inlet closing, overlap, and signed margin calculations remain usable
+
+#### Scenario: Area terminology is explicit
+- **WHEN** the cylindrical result is visible
+- **THEN** it is labelled geometric rotary overlap area, identifies the common-width and shared-diameter assumptions, and states that it is not discharge-corrected effective flow area
+
+#### Scenario: Area curve does not rely on colour
+- **WHEN** nominal and uncertainty-bounded rotary area series are presented
+- **THEN** line style, labels, markers, and a semantic numeric table distinguish them independently of colour
 
 ### Requirement: 360-degree timing diagram
 The workbench SHALL render a responsive circular timing diagram with TDC at 0 degrees at the top, BDC at 180 degrees at the bottom, and increasing logical cycle angle clockwise. Separate concentric tracks SHALL represent exhaust, each enabled transfer group, rotary inlet when applicable, and analysis overlays.
@@ -109,20 +164,77 @@ The workbench SHALL provide labelled controls for bore, clearance-volume source,
 - **WHEN** the user leaves compression, squish, or area inputs blank
 - **THEN** the workbench identifies only the dependent metrics as not provided and keeps all independent calculations operable
 
-### Requirement: Metric and evidence presentation
-The workbench SHALL present displacement, mean piston speed, geometric compression, exhaust-closure trapped geometric compression, target clearance volume, squish statistics, annular geometry, angle-area, specific time-area, and blowdown time-area with inputs, units, model names, and interpretation boundaries. Interpretive content SHALL visibly distinguish calculated geometry, documented reference, and tuning hypothesis.
+### Requirement: Metric and diagnostic-level presentation
+The workbench SHALL present displacement, mean piston speed, geometric compression, exhaust-closure trapped geometric compression, target clearance volume, squish statistics, annular geometry, angle-area, specific time-area, and blowdown time-area with inputs, units, model names, and interpretation boundaries. Every diagnostic SHALL visibly identify `calculated-geometry`, `profile-heuristic`, or `measured-or-modelled`, and SHALL show the evidence subtype, source, reference-set version, applicability, calibration scope, and uncertainty required by that level. Severity SHALL be visually and semantically separate from claim level.
 
 #### Scenario: Review trapped compression
 - **WHEN** a valid trapped geometric ratio is shown
 - **THEN** the same panel identifies the exhaust-closing reference and states that the value is not a running-pressure or detonation prediction
 
-#### Scenario: Review documented reference
-- **WHEN** the application presents a manufacturer or published configuration value
-- **THEN** its source and applicable component configuration are visible next to the value
+#### Scenario: Review profile heuristic
+- **WHEN** the application presents a comparison with a selected profile band
+- **THEN** the profile identifier, reference-set version, source, applicable configuration, numeric comparison, and uncertainty status are visible next to the advisory result
 
-#### Scenario: Review tuning hypothesis
-- **WHEN** a possible tuning implication is presented
-- **THEN** it is labelled as a hypothesis and includes the required physical verification rather than a universal verdict
+#### Scenario: Review measured or modelled evidence
+- **WHEN** a measured observation or calibrated-model result is presented
+- **THEN** the interface distinguishes its subtype and displays provenance, operating condition, calibration scope, and uncertainty without presenting a model as a measurement
+
+#### Scenario: Claim level does not rely on colour
+- **WHEN** diagnostics at more than one level are present
+- **THEN** visible text labels, accessible names, and structured grouping distinguish the levels independently of hue or warning severity
+
+### Requirement: Explicit engine-use profile selection
+The workbench SHALL provide an optional diagnostic profile selector containing `none`, touring box, sport box, road expansion, and race expansion. It SHALL explain the intended engine-use and exhaust context of each profile, show the active reference-set version and sources, default to `none` for migrated projects without a selection, and SHALL never auto-select or infer a profile from entered geometry.
+
+#### Scenario: Select a profile explicitly
+- **WHEN** the user selects road expansion
+- **THEN** profile-qualified diagnostics and character annotations update while all calculated values, diagram events, areas, and uncertainty intervals remain unchanged
+
+#### Scenario: Select no profile
+- **WHEN** the user chooses `none`
+- **THEN** calculated geometry remains visible, profile heuristics are omitted, and no previous profile judgement remains attached to the project
+
+#### Scenario: Profile reference is unsupported
+- **WHEN** a project requests a profile reference-set version unavailable in the application
+- **THEN** geometry loads, profile diagnostics are marked unavailable, and the interface does not silently substitute the current version
+
+### Requirement: Connected inlet and blowdown analysis panels
+The workbench SHALL present the signed inlet-opening versus transfer-closing margin, rotary inlet closing delay, and global blowdown as separate but adjacent results. The margin SHALL preserve its sign and uncertainty interval. Inlet closing SHALL remain separate from opening and total duration. Global blowdown SHALL group degrees, elapsed milliseconds, exhaust angle-area, and specific time-area with the earliest-transfer and RPM references.
+
+#### Scenario: Inspect rotary timing relationships
+- **WHEN** rotary timing and at least one transfer event are valid
+- **THEN** the user can inspect opening advance, signed inlet-to-transfer margin, closing delay, and total duration as independently labelled values rather than one combined intake score
+
+#### Scenario: Inspect complete blowdown
+- **WHEN** all timing, RPM, displacement, and exhaust-area inputs are valid
+- **THEN** blowdown degrees, elapsed milliseconds, angle-area, specific time-area, first-opening transfer identity, and integration boundary appear in one result group
+
+#### Scenario: Blowdown inputs are incomplete
+- **WHEN** blowdown degrees are valid but RPM or exhaust-area data is absent
+- **THEN** the valid degrees remain visible and each dependent metric states what is missing without applying a sufficiency judgement
+
+#### Scenario: Timing relation is uncertain
+- **WHEN** a signed margin or blowdown interval crosses zero after uncertainty propagation
+- **THEN** nominal value, lower bound, upper bound, and an explicit uncertain relation are available without relying on colour or the nominal sign alone
+
+### Requirement: Qualitative Engine character estimate visualisation
+The workbench SHALL provide a section titled Engine character estimate that plots calculated area versus crank angle and specific time-area versus a bounded user-editable RPM sweep using their actual units. If a profile is selected, it MAY add separately labelled lower-speed, mid-range, upper-speed, or area-limited contextual annotations. It SHALL provide a semantic numeric table for every plotted series. No axis or series SHALL use torque, power, horsepower, CV, kilowatts, newton metres, peak-output, or dyno-curve terminology.
+
+#### Scenario: Inspect geometry-based character view
+- **WHEN** valid geometric area inputs and RPM sweep are available
+- **THEN** the graphs, units, source labels, uncertainty bands, and model boundaries update in real time without fabricating a torque or power series
+
+#### Scenario: Profile annotation is conditional
+- **WHEN** a selected profile supports a qualitative annotation
+- **THEN** the annotation is labelled `profile-heuristic`, names the profile and reference-set version, and remains visually separate from the calculated series
+
+#### Scenario: No profile or insufficient input
+- **WHEN** no profile is selected or a required area input is absent
+- **THEN** available calculated series remain visible, unsupported annotations or series are marked unavailable, and timing degrees are not converted into a synthetic curve
+
+#### Scenario: Character graph cannot be perceived
+- **WHEN** a user relies on the semantic table instead of the graph
+- **THEN** the same RPM samples, geometric area or specific time-area values, uncertainty bounds, profile annotation text, and model boundaries are available without colour or pointer interaction
 
 ### Requirement: Configuration comparison view
 The workbench SHALL let the user capture or load one comparison configuration, show compatible values side by side, and report signed deltas and uncertainty-range overlap without ranking either configuration.
@@ -230,3 +342,14 @@ The workbench SHALL offer an explicitly labelled demonstration configuration and
 #### Scenario: Reset edited project
 - **WHEN** the user requests reset after changing the current project
 - **THEN** the workbench confirms the destructive action before clearing current project data
+
+### Requirement: Editable project report identity
+The workbench SHALL provide a discoverable project-report section containing project name, project code, project date, and up to three lines for components and engine characteristics. Editing these fields SHALL update local and portable project state without changing any engine calculation.
+
+#### Scenario: Document a project
+- **WHEN** the user enters project identity and engine-detail text
+- **THEN** the values are available to autosave, import, export, sharing, and the print report while all calculated timing and geometry remain unchanged
+
+#### Scenario: Exceed the engine-detail line limit
+- **WHEN** the engine-detail field contains more than three logical lines
+- **THEN** the field identifies the recoverable error and valid persistence, sharing, export, and print remain blocked until the text is reduced to three lines
