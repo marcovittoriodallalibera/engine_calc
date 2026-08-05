@@ -35,6 +35,8 @@ test("server-renders the complete calculator shell", async () => {
   assert.match(html, /Vespa 51 mm study/);
   assert.match(html, /Live slider-crank geometry across one complete crankshaft cycle\./);
   assert.match(html, /360° timing map/);
+  assert.match(html, /Cylinder lift study/);
+  assert.match(html, /Installed cylinder lift/);
   assert.match(html, /Compression/);
   assert.match(html, /Squish geometry/);
   assert.match(html, /Time-area/);
@@ -50,6 +52,10 @@ test("renders accessible controls and explicit interpretation limits", async () 
   assert.match(html, /aria-labelledby="engine-setup-heading"/);
   assert.match(html, /aria-label="Calculated results"/);
   assert.match(html, /aria-label="Induction mode"/);
+  assert.match(html, /aria-label="Adjust cylinder lift in 0.1 millimetre steps"/);
+  assert.match(html, /Increase cylinder lift by 0.1 millimetres/);
+  assert.match(html, /stroke and\s+rod length stay unchanged/i);
+  assert.match(html, /Assembled no-spacer baseline volume above the piston at TDC/);
   assert.match(html, /simultaneous geometric opening only/);
   assert.match(html, /not a dynamic pressure or detonation prediction/);
   assert.match(html, /No universal safe squish target is applied/);

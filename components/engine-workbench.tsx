@@ -16,6 +16,7 @@ import TimingDial, {
 import { evaluateCompressionScenario } from "@/lib/engine";
 import {
   analyseProject,
+  type CylinderLiftPortComparison,
   type EngineProjectAnalysis,
   type PortAnalysis,
 } from "@/lib/presentation/analyse-project";
@@ -240,6 +241,7 @@ function SectionHeading({
 function PortEditor({
   port,
   analysis,
+  liftComparison,
   strokeMm,
   onUpdate,
   onRemove,
@@ -247,6 +249,7 @@ function PortEditor({
 }: {
   port: PortDraft;
   analysis: PortAnalysis | undefined;
+  liftComparison: CylinderLiftPortComparison | undefined;
   strokeMm: number | null;
   onUpdate: (patch: Partial<PortDraft>) => void;
   onRemove?: () => void;
@@ -366,6 +369,12 @@ function PortEditor({
                 <strong>{formatNumber(analysis.travelFromTdcMm, 2)} mm</strong>
               </span>
             </div>
+            {liftComparison && liftComparison.durationDeltaDeg !== 0 ? (
+              <p className="cylinder-lift-note">
+                Cylinder lift changes opening by {formatSigned(liftComparison.openingDeltaDeg, 1)}°
+                and duration by {formatSigned(liftComparison.durationDeltaDeg, 1)}° from the measured baseline.
+              </p>
+            ) : null}
             {analysis.uncertainty ? (
               <p className="uncertainty-note">
                 ±{formatNumber(analysis.uncertainty.travelMm, 2)} mm gives
@@ -510,6 +519,7 @@ export function EngineWorkbench() {
   );
   const [openPrimarySections, setOpenPrimarySections] = useState({
     geometry: true,
+    cylinderLift: true,
     ports: true,
     induction: true,
   });
@@ -518,8 +528,15 @@ export function EngineWorkbench() {
   const analysis = useMemo(() => analyseProject(project), [project]);
   const geometryBoreMm = parseLocaleNumber(project.geometry.boreMm);
   const geometryStrokeMm = parseLocaleNumber(project.geometry.strokeMm);
+  const requestedCylinderLiftMm = parseLocaleNumber(
+    project.compression.baseSpacerThicknessMm,
+  );
   const rotaryAdvanceDeg = parseLocaleNumber(project.induction.advanceBtdcDeg);
   const rotaryDelayDeg = parseLocaleNumber(project.induction.delayAtdcDeg);
+  const showCylinderLiftReferenceMarkers =
+    analysis.cylinderLift.appliedThicknessMm > 0 &&
+    project.presentation.showAnalysisOverlays &&
+    project.presentation.showReferenceLabels;
   const rotaryTimingValidationMessage =
     rotaryAdvanceDeg !== null &&
     rotaryDelayDeg !== null &&
@@ -578,7 +595,7 @@ export function EngineWorkbench() {
     let nextSaveState: typeof localSaveState;
     let saveFailureMessage: string | null = null;
 
-    if (!analysis.validGeometry) {
+    if (!analysis.validGeometry || !analysis.cylinderLift.valid) {
       nextSaveState = "invalid";
     } else {
       try {
@@ -595,7 +612,7 @@ export function EngineWorkbench() {
       if (saveFailureMessage) setActionStatus(saveFailureMessage);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [analysis.validGeometry, hydrated, project]);
+  }, [analysis.cylinderLift.valid, analysis.validGeometry, hydrated, project]);
 
   function noteEdit() {
     setActionStatus(
@@ -646,6 +663,16 @@ export function EngineWorkbench() {
     }));
   }
 
+  function nudgeCylinderLift(deltaMm: number) {
+    const current = requestedCylinderLiftMm ?? 0;
+    const maximum = analysis.cylinderLift.maximumThicknessMm ?? Number.POSITIVE_INFINITY;
+    const next = Math.min(maximum, Math.max(0, current + deltaMm));
+    updateCompression(
+      "baseSpacerThicknessMm",
+      String(Number(next.toFixed(6))),
+    );
+  }
+
   function updateSquish<K extends keyof EngineProjectDraft["squish"]>(
     key: K,
     value: EngineProjectDraft["squish"][K],
@@ -672,20 +699,22 @@ export function EngineWorkbench() {
     noteEdit();
     let resolvedPatch = patch;
     if (patch.sourceMode) {
-      const currentAnalysis = analysis.ports.find((port) => port.id === id);
+      const currentAnalysis = analysis.cylinderLift.ports.find(
+        (port) => port.id === id,
+      );
       const strokeMm = parseLocaleNumber(project.geometry.strokeMm);
       const deckPositionMm = parseLocaleNumber(project.geometry.deckPositionMm) ?? 0;
       if (currentAnalysis && strokeMm !== null) {
         const converted =
           patch.sourceMode === "travel-from-tdc"
-            ? currentAnalysis.travelFromTdcMm
+            ? currentAnalysis.baselineTravelFromTdcMm
             : patch.sourceMode === "height-above-bdc"
-              ? strokeMm - currentAnalysis.travelFromTdcMm
+              ? strokeMm - currentAnalysis.baselineTravelFromTdcMm
               : patch.sourceMode === "depth-from-deck"
-                ? currentAnalysis.travelFromTdcMm + deckPositionMm
+                ? currentAnalysis.baselineTravelFromTdcMm + deckPositionMm
                 : patch.sourceMode === "opening-angle"
-                  ? currentAnalysis.openingAngleDeg
-                  : currentAnalysis.durationDeg;
+                  ? currentAnalysis.baselineOpeningAngleDeg
+                  : currentAnalysis.baselineDurationDeg;
         resolvedPatch = {
           ...patch,
           sourceValue: String(Number(converted.toFixed(8))),
@@ -863,7 +892,7 @@ export function EngineWorkbench() {
 
   const timingMarkers = useMemo<TimingMarker[]>(() => {
     if (!project.presentation.showReferenceLabels) return [];
-    return analysis.ports.flatMap((port) => [
+    const currentMarkers = analysis.ports.flatMap((port) => [
       {
         id: `${port.id}-opens`,
         angle: port.openingAngleDeg,
@@ -877,7 +906,30 @@ export function EngineWorkbench() {
         colour: port.colour,
       },
     ]);
-  }, [analysis.ports, project.presentation.showReferenceLabels]);
+    const baselineMarkers =
+      showCylinderLiftReferenceMarkers
+        ? analysis.cylinderLift.ports.flatMap((port) => [
+            {
+              id: `${port.id}-baseline-opens`,
+              angle: port.baselineOpeningAngleDeg,
+              label: `${port.label} no-spacer opening`,
+              colour: "#a9ada3",
+            },
+            {
+              id: `${port.id}-baseline-closes`,
+              angle: 360 - port.baselineOpeningAngleDeg,
+              label: `${port.label} no-spacer closing`,
+              colour: "#a9ada3",
+            },
+          ])
+        : [];
+    return [...currentMarkers, ...baselineMarkers];
+  }, [
+    analysis.cylinderLift,
+    analysis.ports,
+    project.presentation.showReferenceLabels,
+    showCylinderLiftReferenceMarkers,
+  ]);
 
   const selectedTimingPhase = useMemo(
     () => timingPhases.find((phase) => phase.id === selectedArc) ?? null,
@@ -886,6 +938,11 @@ export function EngineWorkbench() {
   const selectedTimingMarker = useMemo(
     () => timingMarkers.find((marker) => marker.id === selectedArc) ?? null,
     [selectedArc, timingMarkers],
+  );
+  const selectedLiftComparison = useMemo(
+    () =>
+      analysis.cylinderLift.ports.find((port) => port.id === selectedArc) ?? null,
+    [analysis.cylinderLift.ports, selectedArc],
   );
 
   function revealPortEditor(portId: string) {
@@ -934,12 +991,6 @@ export function EngineWorkbench() {
           ({ kind: "head-gasket", thicknessMm: amount }) as const,
       },
       {
-        label: "Base spacer",
-        value: parseLocaleNumber(project.compression.baseSpacerThicknessMm),
-        change: (amount: number) =>
-          ({ kind: "base-spacer", thicknessMm: amount }) as const,
-      },
-      {
         label: "Exhaust roof raise",
         value: parseLocaleNumber(project.compression.exhaustRaiseMm),
         change: (amount: number) =>
@@ -971,6 +1022,12 @@ export function EngineWorkbench() {
   }, [analysis, project]);
 
   const primaryTransfer = analysis.transfers[0] ?? null;
+  const exhaustLiftComparison = analysis.cylinderLift.ports.find(
+    (port) => port.id === analysis.exhaust?.id,
+  );
+  const primaryLiftComparison = analysis.cylinderLift.ports.find(
+    (port) => port.id === primaryTransfer?.port.id,
+  );
   const comparisonBlowdown = baseline?.timing.globalBlowdownDeg ?? null;
 
   return (
@@ -1037,7 +1094,7 @@ export function EngineWorkbench() {
             </button>
           ))}
         </div>
-        <div className="mobile-live-readout" aria-live="polite">
+        <div className="mobile-live-readout">
           <span
             aria-label={`Exhaust duration ${formatNumber(analysis.exhaust?.durationDeg, 1)} degrees`}
           >
@@ -1052,6 +1109,14 @@ export function EngineWorkbench() {
             <small aria-hidden="true">BD</small>{" "}
             <strong aria-hidden="true">
               {formatNumber(analysis.timing.globalBlowdownDeg, 1)}°
+            </strong>
+          </span>
+          <span
+            aria-label={`Cylinder lift ${formatNumber(analysis.cylinderLift.appliedThicknessMm, 1)} millimetres`}
+          >
+            <small aria-hidden="true">LIFT</small>{" "}
+            <strong aria-hidden="true">
+              +{formatNumber(analysis.cylinderLift.appliedThicknessMm, 1)} mm
             </strong>
           </span>
         </div>
@@ -1157,6 +1222,104 @@ export function EngineWorkbench() {
             </details>
 
             <details
+              className="control-section control-section-lift"
+              open={openPrimarySections.cylinderLift}
+              onToggle={(event) =>
+                setPrimarySectionOpen("cylinderLift", event.currentTarget.open)
+              }
+            >
+              <summary>
+                <span>
+                  <strong>Cylinder lift study</strong>
+                  <small>Raise every cylinder port together</small>
+                </span>
+                <b className="control-summary-value">
+                  +{formatNumber(analysis.cylinderLift.appliedThicknessMm, 1)} mm
+                </b>
+              </summary>
+              <div className="control-section-body cylinder-lift-control">
+                <p className="control-explainer">
+                  Apply installed spacer thickness beneath the cylinder. The deck,
+                  exhaust roof and every transfer roof move upwards while stroke and
+                  rod length stay unchanged.
+                </p>
+                <div
+                  className="cylinder-lift-stepper"
+                  role="group"
+                  aria-label="Adjust cylinder lift in 0.1 millimetre steps"
+                >
+                  <button
+                    className="button-secondary spacer-step"
+                    type="button"
+                    aria-label="Decrease cylinder lift by 0.1 millimetres"
+                    disabled={
+                      requestedCylinderLiftMm === null ||
+                      requestedCylinderLiftMm <= 0
+                    }
+                    onClick={() => nudgeCylinderLift(-0.1)}
+                  >
+                    −0.1
+                  </button>
+                  <NumberField
+                    compact
+                    label="Installed cylinder lift"
+                    value={project.compression.baseSpacerThicknessMm}
+                    unit="mm"
+                    minimum={0}
+                    maximum={analysis.cylinderLift.maximumThicknessMm ?? undefined}
+                    help="Use the installed, compressed thickness beneath the cylinder. The original port measurements remain the no-spacer baseline."
+                    onChange={(value) =>
+                      updateCompression("baseSpacerThicknessMm", value)
+                    }
+                  />
+                  <button
+                    className="button-secondary spacer-step"
+                    type="button"
+                    aria-label="Increase cylinder lift by 0.1 millimetres"
+                    disabled={
+                      !analysis.cylinderLift.valid ||
+                      (analysis.cylinderLift.maximumThicknessMm !== null &&
+                        analysis.cylinderLift.appliedThicknessMm >=
+                          analysis.cylinderLift.maximumThicknessMm)
+                    }
+                    onClick={() => nudgeCylinderLift(0.1)}
+                  >
+                    +0.1
+                  </button>
+                </div>
+                <div className="cylinder-lift-readout" aria-label="Cylinder lift effects">
+                  <span>
+                    <small>Port movement</small>
+                    <strong>
+                      +{formatNumber(analysis.cylinderLift.appliedThicknessMm, 2)} mm
+                      towards TDC
+                    </strong>
+                  </span>
+                  <span>
+                    <small>Effective deck position</small>
+                    <strong>
+                      {formatSigned(analysis.cylinderLift.effectiveDeckPositionMm, 2)} mm
+                    </strong>
+                  </span>
+                </div>
+                {analysis.cylinderLift.appliedThicknessMm > 0 ? (
+                  <button
+                    className="text-button"
+                    type="button"
+                    onClick={() => updateCompression("baseSpacerThicknessMm", "0")}
+                  >
+                    Reset cylinder lift
+                  </button>
+                ) : null}
+                <p className="fine-print">
+                  Assumes the cylinder and head move together, with no corrective
+                  machining. Port, clearance-volume and squish inputs elsewhere remain
+                  the no-spacer baseline while this lift is active.
+                </p>
+              </div>
+            </details>
+
+            <details
               className="control-section"
               open={openPrimarySections.ports}
               onToggle={(event) =>
@@ -1175,6 +1338,9 @@ export function EngineWorkbench() {
                     key={port.id}
                     port={port}
                     analysis={analysis.ports.find((item) => item.id === port.id)}
+                    liftComparison={analysis.cylinderLift.ports.find(
+                      (item) => item.id === port.id,
+                    )}
                     strokeMm={geometryStrokeMm}
                     onUpdate={(patch) => updatePort(port.id, patch)}
                     onRemove={index > 3 ? () => removePort(port.id) : undefined}
@@ -1279,6 +1445,14 @@ export function EngineWorkbench() {
                 </span>
               </summary>
               <div className="control-section-body">
+                {analysis.cylinderLift.appliedThicknessMm > 0 ? (
+                  <p className="baseline-authority-note">
+                    <strong>No-spacer baseline:</strong> the clearance volume and
+                    four squish gaps entered here must describe the assembly before
+                    the active cylinder lift. If they were measured after fitting the
+                    spacer, reset cylinder lift to 0 to avoid counting it twice.
+                  </p>
+                ) : null}
                 <div className="segmented-control segmented-control-2" aria-label="Clearance volume source">
                   <button
                     type="button"
@@ -1304,7 +1478,7 @@ export function EngineWorkbench() {
                     unit="cc"
                     minimum={0}
                     exclusiveMinimum
-                    help="Assembled volume above the piston at TDC. Include all volumes consistently."
+                    help="Assembled no-spacer baseline volume above the piston at TDC. When cylinder lift is active, its geometric volume is added separately."
                     onChange={(value) =>
                       updateCompression("clearanceVolumeCc", value)
                     }
@@ -1366,6 +1540,10 @@ export function EngineWorkbench() {
                     updateCompression("targetTrappedRatio", value)
                   }
                 />
+                <p className="fine-print">
+                  Squish gaps are the no-spacer baseline. Active cylinder lift is added
+                  to each reading under the stated cylinder-and-head movement assumption.
+                </p>
                 <div className="measurement-map" aria-label="Four point squish measurements">
                   <span className="piston-disc" aria-hidden="true">N</span>
                   <NumberField
@@ -1476,15 +1654,6 @@ export function EngineWorkbench() {
                   }
                 />
                 <NumberField
-                  label="Add base spacer"
-                  value={project.compression.baseSpacerThicknessMm}
-                  unit="mm"
-                  minimum={0}
-                  onChange={(value) =>
-                    updateCompression("baseSpacerThicknessMm", value)
-                  }
-                />
-                <NumberField
                   label="Raise exhaust roof"
                   value={project.compression.exhaustRaiseMm}
                   unit="mm"
@@ -1556,21 +1725,33 @@ export function EngineWorkbench() {
                 label="Exhaust"
                 value={formatNumber(analysis.exhaust?.durationDeg, 1)}
                 unit="°"
-                detail="Total open duration"
+                detail={
+                  analysis.cylinderLift.appliedThicknessMm > 0 &&
+                  exhaustLiftComparison
+                    ? `${formatSigned(exhaustLiftComparison.durationDeltaDeg, 1)}° from cylinder lift`
+                    : "Total open duration"
+                }
                 tone="accent"
               />
               <Metric
                 label={primaryTransfer?.port.label ?? "Primary transfer"}
                 value={formatNumber(primaryTransfer?.port.durationDeg, 1)}
                 unit="°"
-                detail="Total open duration"
+                detail={
+                  analysis.cylinderLift.appliedThicknessMm > 0 &&
+                  primaryLiftComparison
+                    ? `${formatSigned(primaryLiftComparison.durationDeltaDeg, 1)}° from cylinder lift`
+                    : "Total open duration"
+                }
               />
               <Metric
                 label="Blowdown"
                 value={formatNumber(analysis.timing.globalBlowdownDeg, 1)}
                 unit="°"
                 detail={
-                  baseline &&
+                  analysis.cylinderLift.appliedThicknessMm > 0
+                    ? `${formatSigned(analysis.cylinderLift.globalBlowdownDeltaDeg, 1)}° from cylinder lift`
+                    : baseline &&
                   comparisonBlowdown !== null &&
                   analysis.timing.globalBlowdownDeg !== null
                     ? `${formatSigned(analysis.timing.globalBlowdownDeg - comparisonBlowdown, 1)}° vs baseline`
@@ -1647,7 +1828,11 @@ export function EngineWorkbench() {
                 markers={timingMarkers}
                 selectedId={selectedArc}
                 onSelect={(id) => setSelectedArc((current) => (current === id ? null : id))}
-                ariaLabel={`Timing diagram for ${project.name}`}
+                ariaLabel={`Timing diagram for ${project.name}${
+                  analysis.cylinderLift.appliedThicknessMm > 0
+                    ? ` with ${formatNumber(analysis.cylinderLift.appliedThicknessMm, 1)} millimetres of cylinder lift${showCylinderLiftReferenceMarkers ? " and no-spacer reference markers" : ""}`
+                    : ""
+                }`}
               />
               <aside className="phase-inspector" aria-live="polite">
                 {selectedTimingPhase ? (
@@ -1677,6 +1862,18 @@ export function EngineWorkbench() {
                         <dd>{formatNumber(clockwiseDuration(selectedTimingPhase.start, selectedTimingPhase.end), 1)}°</dd>
                       </div>
                     </dl>
+                    {selectedLiftComparison &&
+                    analysis.cylinderLift.appliedThicknessMm > 0 ? (
+                      <p className="phase-inspector-delta">
+                        No-spacer duration {formatNumber(
+                          selectedLiftComparison.baselineDurationDeg,
+                          1,
+                        )}°. Cylinder lift adds {formatSigned(
+                          selectedLiftComparison.durationDeltaDeg,
+                          1,
+                        )}°.
+                      </p>
+                    ) : null}
                     {project.ports.some((port) => port.id === selectedTimingPhase.id) ? (
                       <button
                         className="button-secondary"
@@ -1706,6 +1903,12 @@ export function EngineWorkbench() {
                 )}
               </aside>
             </div>
+            {showCylinderLiftReferenceMarkers ? (
+              <p className="lift-diagram-key">
+                <strong>No-spacer reference:</strong> grey event markers show the
+                original port boundaries; coloured arcs show the lifted cylinder.
+              </p>
+            ) : null}
             <p className="geometric-boundary">
               Overlap indicates simultaneous geometric opening only. It does not by
               itself predict flow direction, pressure behaviour, power or safety.
@@ -1719,6 +1922,9 @@ export function EngineWorkbench() {
           </header>
 
           <nav className="result-navigation" aria-label="Result sections">
+            {analysis.cylinderLift.appliedThicknessMm > 0 ? (
+              <a href="#cylinder-lift-results">Cylinder lift</a>
+            ) : null}
             <a href="#timing-results">Timing</a>
             <a href="#head-results">Compression & squish</a>
             <a href="#flow-results">Time-area</a>
@@ -1726,6 +1932,85 @@ export function EngineWorkbench() {
           </nav>
 
           <div className="analysis-detail">
+
+          {analysis.cylinderLift.appliedThicknessMm > 0 ? (
+            <section className="result-section cylinder-lift-results" id="cylinder-lift-results">
+              <SectionHeading
+                title="Cylinder lift comparison"
+                detail={`Every port is raised by ${formatNumber(analysis.cylinderLift.appliedThicknessMm, 2)} mm. Stroke, rod length and rotary-valve timing remain unchanged.`}
+              />
+              <div className="lift-metric-grid">
+                <Metric
+                  label="Blowdown change"
+                  value={formatSigned(analysis.cylinderLift.globalBlowdownDeltaDeg, 2)}
+                  unit="°"
+                  detail="Exhaust to earliest transfer"
+                />
+                <Metric
+                  label="Transfer spread change"
+                  value={formatSigned(analysis.cylinderLift.transferOpeningSpreadDeltaDeg, 2)}
+                  unit="°"
+                  detail="Opening spread between transfer groups"
+                />
+                <Metric
+                  label="Exhaust overlap change"
+                  value={formatSigned(analysis.cylinderLift.exhaustTransferOverlapDeltaDeg, 2)}
+                  unit="°"
+                  detail="Exhaust and transfer union"
+                />
+                <Metric
+                  label="Inlet overlap change"
+                  value={formatSigned(analysis.cylinderLift.rotaryTransferOverlapDeltaDeg, 2)}
+                  unit="°"
+                  detail="Rotary inlet and transfer union"
+                />
+              </div>
+              <div className="table-scroll">
+                <table className="data-table cylinder-lift-table">
+                  <caption className="visually-hidden">
+                    Port timing before and after the installed cylinder lift
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Port</th>
+                      <th scope="col">Opening, no spacer</th>
+                      <th scope="col">Opening, lifted</th>
+                      <th scope="col">Opening change</th>
+                      <th scope="col">Duration, no spacer</th>
+                      <th scope="col">Duration, lifted</th>
+                      <th scope="col">Duration change</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {analysis.cylinderLift.ports.map((port) => (
+                      <tr key={port.id}>
+                        <th scope="row">
+                          <span
+                            className="table-phase-dot"
+                            style={{ background: port.colour }}
+                            aria-hidden="true"
+                          />
+                          {port.label}
+                        </th>
+                        <td>{formatNumber(port.baselineOpeningAngleDeg, 2)}° ATDC</td>
+                        <td>{formatNumber(port.liftedOpeningAngleDeg, 2)}° ATDC</td>
+                        <td>{formatSigned(port.openingDeltaDeg, 2)}°</td>
+                        <td>{formatNumber(port.baselineDurationDeg, 2)}°</td>
+                        <td>{formatNumber(port.liftedDurationDeg, 2)}°</td>
+                        <td><strong>{formatSigned(port.durationDeltaDeg, 2)}°</strong></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="model-note">
+                With the head moving together with the cylinder, this model also adds
+                {" "}{formatNumber(analysis.cylinderLift.clearanceVolumeDeltaCc, 3)} cc
+                of clearance volume and {formatSigned(analysis.cylinderLift.squishGapDeltaMm, 2)} mm
+                to the entered squish readings. Physical measurements remain authoritative.
+              </p>
+            </section>
+          ) : null}
 
           <section className="result-section" id="timing-results">
             <SectionHeading
@@ -1835,7 +2120,7 @@ export function EngineWorkbench() {
             <article className="result-card">
               <SectionHeading
                 title="Compression"
-                detail="Geometric and exhaust-closure-based ratios use the same measured clearance volume."
+                detail="Geometric and exhaust-closure-based ratios use the same assembled clearance-volume basis and explicit geometry changes."
               />
               <div className="result-stat-grid">
                 <Metric
@@ -1889,6 +2174,17 @@ export function EngineWorkbench() {
                     <dt>Custom correction</dt>
                     <dd>{formatSigned(analysis.compression.componentBreakdownCc.customCorrection, 2)} cc</dd>
                   </div>
+                  {analysis.cylinderLift.appliedThicknessMm > 0 ? (
+                    <div>
+                      <dt>Cylinder lift</dt>
+                      <dd>
+                        {formatSigned(
+                          analysis.cylinderLift.clearanceVolumeDeltaCc,
+                          2,
+                        )} cc
+                      </dd>
+                    </div>
+                  ) : null}
                 </dl>
               ) : null}
               <p className="model-note">

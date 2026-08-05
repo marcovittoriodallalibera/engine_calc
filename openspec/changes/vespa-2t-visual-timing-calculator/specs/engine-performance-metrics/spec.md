@@ -201,7 +201,7 @@ The system SHALL distinguish direct geometric dependencies from tuning interpret
 
 #### Scenario: Base spacing changes cylinder position
 - **WHEN** a comparison raises the cylinder with a base spacer and retains the same head and piston assembly
-- **THEN** the project explicitly updates the signed deck position used for port timing, clearance volume, and squish rather than applying a hidden correction
+- **THEN** the project explicitly adds spacer thickness to the signed deck position and squish readings, adds `piston_area * spacer_thickness` to clearance volume, subtracts spacer thickness from every normalised port-roof travel, and reports the resulting timing and compression deltas rather than applying a hidden correction
 
 #### Scenario: Head machining hypothesis
 - **WHEN** a reduction in chamber or squish geometry is considered as a tuning action

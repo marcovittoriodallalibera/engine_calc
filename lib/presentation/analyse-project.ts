@@ -68,7 +68,7 @@ export interface TransferAnalysis {
   valveRelationship: "overlap" | "gap" | "coincident" | "not-applicable";
 }
 
-export interface EngineProjectAnalysis {
+interface EngineProjectAnalysisCore {
   validGeometry: boolean;
   displacementCc: number | null;
   meanPistonSpeedMps: number | null;
@@ -124,6 +124,39 @@ export interface EngineProjectAnalysis {
     belowManufacturerMinimum: boolean | null;
   };
   diagnostics: string[];
+}
+
+export interface CylinderLiftPortComparison {
+  id: string;
+  label: string;
+  colour: string;
+  baselineTravelFromTdcMm: number;
+  liftedTravelFromTdcMm: number;
+  baselineOpeningAngleDeg: number;
+  liftedOpeningAngleDeg: number;
+  openingDeltaDeg: number;
+  baselineDurationDeg: number;
+  liftedDurationDeg: number;
+  durationDeltaDeg: number;
+}
+
+export interface CylinderLiftAnalysis {
+  requestedThicknessMm: number | null;
+  appliedThicknessMm: number;
+  maximumThicknessMm: number | null;
+  valid: boolean;
+  effectiveDeckPositionMm: number;
+  clearanceVolumeDeltaCc: number | null;
+  squishGapDeltaMm: number;
+  globalBlowdownDeltaDeg: number | null;
+  transferOpeningSpreadDeltaDeg: number | null;
+  exhaustTransferOverlapDeltaDeg: number | null;
+  rotaryTransferOverlapDeltaDeg: number | null;
+  ports: CylinderLiftPortComparison[];
+}
+
+export interface EngineProjectAnalysis extends EngineProjectAnalysisCore {
+  cylinderLift: CylinderLiftAnalysis;
 }
 
 const portColours: Record<PortDraft["kind"], string> = {
@@ -216,6 +249,7 @@ function analysePort(
   strokeMm: number,
   rodLengthMm: number,
   crownBelowDeckAtTdcMm: number,
+  cylinderLiftMm: number,
   rpm: number | null,
   displacementCc: number | null,
 ): PortAnalysis | null {
@@ -231,6 +265,24 @@ function analysePort(
   const count = parseLocaleNumber(port.count);
   const uncertaintyMm = parseLocaleNumber(port.uncertaintyMm);
   const diagnostics = [...source.diagnostics];
+  const effectiveTravelFromTdcMm = source.travelFromTdcMm - cylinderLiftMm;
+  let effectiveTiming = source.timing;
+
+  if (cylinderLiftMm > 0) {
+    const shiftedAngle = crankAnglesFromTdcTravel({
+      strokeMm,
+      rodLengthMm,
+      travelFromTdcMm: effectiveTravelFromTdcMm,
+    });
+    diagnostics.push(...diagnosticMessages(shiftedAngle));
+    if (!shiftedAngle.value) return null;
+    const shiftedTiming = symmetricPortTimingFromOpening(
+      shiftedAngle.value.openingAngleDeg,
+    );
+    diagnostics.push(...diagnosticMessages(shiftedTiming));
+    if (!shiftedTiming.value) return null;
+    effectiveTiming = shiftedTiming.value;
+  }
 
   let maximumAreaMm2: number | null = null;
   let angleAreaMm2Deg: number | null = null;
@@ -247,12 +299,12 @@ function analysePort(
     const integrated = integrateRectangularPortAngleArea({
       strokeMm,
       rodLengthMm,
-      roofTravelFromTdcMm: source.travelFromTdcMm,
+      roofTravelFromTdcMm: effectiveTravelFromTdcMm,
       portWidthMm: widthMm,
       portHeightMm: heightMm,
       portCount: count,
-      startAngleDeg: source.timing.openingAngleDeg,
-      endAngleDeg: source.timing.closingAngleDeg,
+      startAngleDeg: effectiveTiming.openingAngleDeg,
+      endAngleDeg: effectiveTiming.closingAngleDeg,
       integrationStepDeg: 0.25,
     });
     diagnostics.push(...diagnosticMessages(integrated));
@@ -278,26 +330,32 @@ function analysePort(
       port.sourceMode === "height-above-bdc" ||
       port.sourceMode === "depth-from-deck")
   ) {
-    const lowerTravel = Math.max(0, source.travelFromTdcMm - uncertaintyMm);
-    const upperTravel = Math.min(strokeMm, source.travelFromTdcMm + uncertaintyMm);
-    const lower = crankAnglesFromTdcTravel({
-      strokeMm,
-      rodLengthMm,
-      travelFromTdcMm: lowerTravel,
-    }).value;
-    const upper = crankAnglesFromTdcTravel({
-      strokeMm,
-      rodLengthMm,
-      travelFromTdcMm: upperTravel,
-    }).value;
-    if (lower && upper) {
-      uncertainty = {
-        travelMm: uncertaintyMm,
-        openingMinDeg: lower.openingAngleDeg,
-        openingMaxDeg: upper.openingAngleDeg,
-        durationMinDeg: 360 - 2 * upper.openingAngleDeg,
-        durationMaxDeg: 360 - 2 * lower.openingAngleDeg,
-      };
+    const lowerTravel = effectiveTravelFromTdcMm - uncertaintyMm;
+    const upperTravel = effectiveTravelFromTdcMm + uncertaintyMm;
+    if (lowerTravel < 0 || upperTravel > strokeMm) {
+      diagnostics.push(
+        `${port.label} measurement uncertainty extends outside the reachable 0 mm to ${strokeMm.toFixed(2)} mm piston-travel range.`,
+      );
+    } else {
+      const lower = crankAnglesFromTdcTravel({
+        strokeMm,
+        rodLengthMm,
+        travelFromTdcMm: lowerTravel,
+      }).value;
+      const upper = crankAnglesFromTdcTravel({
+        strokeMm,
+        rodLengthMm,
+        travelFromTdcMm: upperTravel,
+      }).value;
+      if (lower && upper) {
+        uncertainty = {
+          travelMm: uncertaintyMm,
+          openingMinDeg: lower.openingAngleDeg,
+          openingMaxDeg: upper.openingAngleDeg,
+          durationMinDeg: 360 - 2 * upper.openingAngleDeg,
+          durationMaxDeg: 360 - 2 * lower.openingAngleDeg,
+        };
+      }
     }
   }
 
@@ -308,12 +366,12 @@ function analysePort(
     colour: portColours[port.kind],
     sourceMode: port.sourceMode,
     sourceValue: source.sourceValue,
-    travelFromTdcMm: source.travelFromTdcMm,
-    openingAngleDeg: source.timing.openingAngleDeg,
-    closingAngleDeg: source.timing.closingAngleDeg,
-    durationDeg: source.timing.durationDeg,
-    durationMs: durationMs(source.timing.durationDeg, rpm),
-    interval: source.timing.interval,
+    travelFromTdcMm: effectiveTravelFromTdcMm,
+    openingAngleDeg: effectiveTiming.openingAngleDeg,
+    closingAngleDeg: effectiveTiming.closingAngleDeg,
+    durationDeg: effectiveTiming.durationDeg,
+    durationMs: durationMs(effectiveTiming.durationDeg, rpm),
+    interval: effectiveTiming.interval,
     widthMm,
     heightMm,
     count,
@@ -371,7 +429,10 @@ function segmentDuration(segments: LinearAngleSegment[]): number {
   );
 }
 
-export function analyseProject(project: EngineProjectDraft): EngineProjectAnalysis {
+function analyseProjectCore(
+  project: EngineProjectDraft,
+  cylinderLiftMm: number,
+): EngineProjectAnalysisCore {
   const boreMm = parseLocaleNumber(project.geometry.boreMm);
   const strokeMm = parseLocaleNumber(project.geometry.strokeMm);
   const rodLengthMm = parseLocaleNumber(project.geometry.rodLengthMm);
@@ -453,6 +514,7 @@ export function analyseProject(project: EngineProjectDraft): EngineProjectAnalys
         strokeMm,
         rodLengthMm,
         crownBelowDeckAtTdcMm,
+        cylinderLiftMm,
         rpm,
         displacementCc,
       ),
@@ -550,7 +612,7 @@ export function analyseProject(project: EngineProjectDraft): EngineProjectAnalys
     }
   }
 
-  let rotary: EngineProjectAnalysis["rotary"] = null;
+  let rotary: EngineProjectAnalysisCore["rotary"] = null;
   if (rotaryTiming) {
     const rotarySegments = intervalSegments(rotaryTiming.interval);
     const rotaryTransferSegments = intersectSegments(
@@ -605,10 +667,16 @@ export function analyseProject(project: EngineProjectDraft): EngineProjectAnalys
   )
     ? componentValues.reduce((sum, value) => sum + value, 0)
     : null;
-  const clearanceVolume =
+  const baselineClearanceVolume =
     project.compression.volumeMode === "component-breakdown"
       ? componentTotal
       : parseLocaleNumber(project.compression.clearanceVolumeCc);
+  const cylinderLiftVolumeDeltaCc =
+    ((Math.PI * boreMm ** 2) / 4) * cylinderLiftMm / 1000;
+  const clearanceVolume =
+    baselineClearanceVolume === null
+      ? null
+      : baselineClearanceVolume + cylinderLiftVolumeDeltaCc;
   const targetTrappedRatio = parseLocaleNumber(
     project.compression.targetTrappedRatio,
   );
@@ -643,7 +711,8 @@ export function analyseProject(project: EngineProjectDraft): EngineProjectAnalys
     project.squish.gapWestMm,
   ]
     .map(parseLocaleNumber)
-    .filter((value): value is number => value !== null);
+    .filter((value): value is number => value !== null)
+    .map((value) => value + cylinderLiftMm);
   const gapStatistics = gaps.length ? squishGapStatistics(gaps).value : null;
   const enteredBowlDiameterMm = parseLocaleNumber(project.squish.bowlDiameterMm);
   const enteredBandWidthMm = parseLocaleNumber(project.squish.bandWidthMm);
@@ -712,5 +781,104 @@ export function analyseProject(project: EngineProjectDraft): EngineProjectAnalys
         ...ports.flatMap((port) => port.diagnostics),
       ]),
     ),
+  };
+}
+
+function metricDelta(
+  current: number | null,
+  baseline: number | null,
+): number | null {
+  return current === null || baseline === null ? null : current - baseline;
+}
+
+export function analyseProject(project: EngineProjectDraft): EngineProjectAnalysis {
+  const baseline = analyseProjectCore(project, 0);
+  const rawLift = project.compression.baseSpacerThicknessMm;
+  const parsedLift = parseLocaleNumber(rawLift);
+  const requestedThicknessMm = rawLift.trim() === "" ? 0 : parsedLift;
+  const maximumThicknessMm = baseline.ports.length
+    ? Math.min(...baseline.ports.map((port) => port.travelFromTdcMm))
+    : null;
+  const hasValidNumber =
+    requestedThicknessMm !== null && requestedThicknessMm >= 0;
+  const withinPortTravel =
+    hasValidNumber &&
+    (maximumThicknessMm === null || requestedThicknessMm <= maximumThicknessMm);
+  const valid = hasValidNumber && withinPortTravel;
+  const appliedThicknessMm = valid ? requestedThicknessMm : 0;
+  const current =
+    appliedThicknessMm > 0
+      ? analyseProjectCore(project, appliedThicknessMm)
+      : baseline;
+  const deckPositionMm = parseLocaleNumber(project.geometry.deckPositionMm) ?? 0;
+  const boreMm = parseLocaleNumber(project.geometry.boreMm);
+  const clearanceVolumeDeltaCc =
+    boreMm !== null && boreMm > 0
+      ? ((Math.PI * boreMm ** 2) / 4) * appliedThicknessMm / 1000
+      : null;
+  const ports = current.ports.flatMap((port) => {
+    const baselinePort = baseline.ports.find((item) => item.id === port.id);
+    if (!baselinePort) return [];
+    return [{
+      id: port.id,
+      label: port.label,
+      colour: port.colour,
+      baselineTravelFromTdcMm: baselinePort.travelFromTdcMm,
+      liftedTravelFromTdcMm: port.travelFromTdcMm,
+      baselineOpeningAngleDeg: baselinePort.openingAngleDeg,
+      liftedOpeningAngleDeg: port.openingAngleDeg,
+      openingDeltaDeg: port.openingAngleDeg - baselinePort.openingAngleDeg,
+      baselineDurationDeg: baselinePort.durationDeg,
+      liftedDurationDeg: port.durationDeg,
+      durationDeltaDeg: port.durationDeg - baselinePort.durationDeg,
+    }];
+  });
+  const extraDiagnostics: string[] = [];
+
+  if (!hasValidNumber) {
+    extraDiagnostics.push("Cylinder lift must be a non-negative number.");
+  } else if (!withinPortTravel && maximumThicknessMm !== null) {
+    extraDiagnostics.push(
+      `Cylinder lift exceeds the highest enabled port roof. Use ${maximumThicknessMm.toFixed(2)} mm or less.`,
+    );
+  } else if (
+    appliedThicknessMm > 0 &&
+    maximumThicknessMm !== null &&
+    Math.abs(appliedThicknessMm - maximumThicknessMm) < 1e-9
+  ) {
+    extraDiagnostics.push(
+      "The highest enabled port reaches the TDC boundary and is geometrically open for the full cycle.",
+    );
+  }
+
+  return {
+    ...current,
+    diagnostics: Array.from(new Set([...current.diagnostics, ...extraDiagnostics])),
+    cylinderLift: {
+      requestedThicknessMm,
+      appliedThicknessMm,
+      maximumThicknessMm,
+      valid,
+      effectiveDeckPositionMm: deckPositionMm + appliedThicknessMm,
+      clearanceVolumeDeltaCc,
+      squishGapDeltaMm: appliedThicknessMm,
+      globalBlowdownDeltaDeg: metricDelta(
+        current.timing.globalBlowdownDeg,
+        baseline.timing.globalBlowdownDeg,
+      ),
+      transferOpeningSpreadDeltaDeg: metricDelta(
+        current.timing.transferOpeningSpreadDeg,
+        baseline.timing.transferOpeningSpreadDeg,
+      ),
+      exhaustTransferOverlapDeltaDeg: metricDelta(
+        current.timing.exhaustTransferUnionOverlapDeg,
+        baseline.timing.exhaustTransferUnionOverlapDeg,
+      ),
+      rotaryTransferOverlapDeltaDeg: metricDelta(
+        current.rotary?.unionTransferOverlapDeg ?? null,
+        baseline.rotary?.unionTransferOverlapDeg ?? null,
+      ),
+      ports,
+    },
   };
 }

@@ -13,6 +13,7 @@ Vespa two-stroke builders currently have to combine separate calculators, degree
 - Calculate bore-derived displacement, mean piston speed, geometric and exhaust-closure trapped compression ratios, target clearance volume, and an auditable clearance-volume breakdown.
 - Calculate squish gap minimum, mean, and asymmetry together with circular annular-band area, area ratio, bowl diameter, and radial band width.
 - Calculate geometric angle-area and RPM-dependent specific time-area for rectangular projected exhaust and transfer windows, including the exhaust blowdown interval.
+- Add a real-time cylinder lift study in 0.1 mm steps that raises every cylinder-controlled port together and compares no-spacer and lifted timings without changing stroke, connecting-rod length, or rotary-valve timing.
 - Compare configurations and propagate stated measurement uncertainty so users can inspect deltas and overlapping result ranges rather than false point precision.
 - Present recommendations in three explicit evidence levels: calculated geometry, documented configuration-specific reference, and tuning hypothesis requiring physical verification.
 - Present all valid results immediately in a responsive 360-degree timing diagram and an equivalent numeric event table.

@@ -16,7 +16,8 @@ The current release is an MVP. Calculation, local persistence, portable projects
 - Geometric and trapped compression ratios, trapped swept volume and target clearance volume
 - Four-point squish statistics, central bowl band width and squish area ratio
 - Idealised rectangular port angle-area, specific time-area and downstroke blowdown time-area
-- Independent what-if effects for a head gasket, base spacer and exhaust-roof raise
+- A real-time cylinder lift study with 0.1 mm steps, per-port timing deltas, no-spacer reference markers, and recalculated blowdown, overlap, compression, squish and time-area
+- Independent what-if effects for a head gasket and exhaust-roof raise
 
 All results update as soon as a valid input changes. Comma and point decimal separators are accepted.
 

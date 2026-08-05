@@ -83,6 +83,25 @@ Each calculated geometry item SHALL have exactly one authoritative source mode a
 - **WHEN** a port remains sourced from duration or opening angle and the user changes stroke or connecting-rod length
 - **THEN** the angular source remains unchanged and its derived linear measurements are recalculated
 
+### Requirement: Explicit cylinder base lift transformation
+The system SHALL accept a non-negative installed cylinder base spacer thickness as an explicit comparison modifier. It SHALL first normalise every enabled piston-controlled port to its no-spacer travel from TDC `x`, then calculate lifted travel as `xLifted = x - spacer`. Stroke, connecting-rod length, bore, rotary-inlet timing, port source values, window dimensions, and port multiplicity SHALL remain unchanged. All dependent port timings, blowdown, overlaps, angle-area, time-area, deck position, clearance volume, and squish values SHALL be recalculated from the transformed geometry.
+
+#### Scenario: Add one tenth of a millimetre below the cylinder
+- **WHEN** the user adds a 0.1 mm installed base spacer to valid 51 mm stroke and 97 mm connecting-rod geometry
+- **THEN** the system subtracts exactly 0.1 mm from the normalised travel of the exhaust roof and every enabled transfer roof before converting each position to crankshaft degrees
+
+#### Scenario: Non-linear degree changes
+- **WHEN** several port roofs at different travel positions are raised by the same spacer thickness
+- **THEN** the system calculates each angular change independently through exact slider-crank geometry and does not apply one shared degree increment
+
+#### Scenario: Angular authoritative source remains the baseline
+- **WHEN** a port is sourced from opening angle or duration and cylinder lift is applied
+- **THEN** the system converts that authoritative no-spacer angle to physical travel, subtracts the lift, calculates the lifted timing, and preserves the original source value
+
+#### Scenario: Spacer exceeds the highest port position
+- **WHEN** spacer thickness would make any enabled port travel less than 0 mm
+- **THEN** the lifted comparison is invalid, no port position is silently clipped, and the no-spacer measurements remain unchanged
+
 ### Requirement: Physical range and numeric error handling
 The system SHALL reject non-finite geometry values and effective travel outside the inclusive range from 0 to the stroke. It SHALL distinguish invalid user data from tiny floating-point excursions caused by evaluating inverse trigonometric functions near a valid boundary.
 

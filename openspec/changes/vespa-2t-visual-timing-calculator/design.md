@@ -239,6 +239,16 @@ The explicit rotary-inlet relationship is the signed margin between inlet openin
 
 An optional comparison configuration is recalculated through the same kernel. The application reports signed deltas for comparable inputs and outputs and shows whether uncertainty intervals overlap. It does not rank one configuration as better. Documented references must include a source label and the configuration to which they apply. Tuning hypotheses must say what physical measurement or trial would be needed to verify them.
 
+### 16. Cylinder lift is a reversible transform over the complete analysis
+
+Installed base spacer thickness remains a persisted schema-version 1 field, but the workbench promotes it from an isolated what-if card to a primary cylinder lift study. The no-spacer project remains authoritative. Analysis first resolves every port source mode to canonical roof travel, applies `liftedTravel = baselineTravel - spacerThickness`, and then recalculates the complete candidate through the same timing, interval, compression, squish, angle-area, and time-area paths.
+
+This preserves angle- or duration-authoritative source values instead of rewriting them, keeps stroke, connecting-rod length, bore, rotary-valve timing, and port window geometry invariant, and exposes the non-linear degree change for each port. A positive lift also increases signed piston-below-deck position and entered squish readings by the spacer thickness and increases clearance volume by piston area multiplied by thickness. These compression consequences are explicitly conditional on the cylinder and head moving together without corrective machining.
+
+The live diagram shows lifted events as the active coloured arcs and labels no-spacer opening and closing reference markers. A semantic comparison table is the complete non-colour alternative. Lift that would move any enabled roof beyond TDC is rejected without clipping or mutation of source measurements.
+
+Alternative considered: mutating every port source field would make a quick visual update possible but would destroy the measured baseline, break angle-authoritative inputs, and feed derived values back into project authority.
+
 ## Risks / Trade-offs
 
 - [Users may mistake precise geometry for precise engine behaviour] -> Keep source provenance, uncertainty, model assumptions, and geometric-only notices adjacent to results and in exports.

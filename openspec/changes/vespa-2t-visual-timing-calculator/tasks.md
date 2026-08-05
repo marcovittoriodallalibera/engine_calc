@@ -27,6 +27,7 @@
 - [ ] 3.7 Implement measured opening and closing events, symmetry-tolerance evaluation, and suppression of a fabricated single port height for asymmetric events
 - [ ] 3.8 Implement linear uncertainty propagation into opening, closing, duration, and ordering envelopes
 - [ ] 3.9 Add geometry golden tests for TDC, BDC, cycle symmetry, forward-inverse round trips, the Polini 51 mm and 97 mm reference, physical limits, and uncertainty boundaries
+- [x] 3.10 Implement and test the explicit cylinder lift transform for every port source mode, including 0.1 mm precision and physical-boundary rejection
 
 ## 4. Circular Interval Kernel
 
@@ -79,6 +80,7 @@
 - [ ] 7.10 Add focus and touch-accessible measurement guidance for every physical datum, including deck, piston edge, port roof and profile, connecting-rod centres, chamber volume, squish, and rotary timing references
 - [x] 7.11 Add clearly labelled demonstration data and confirmed reset behaviour without presenting sample values as tuning recommendations
 - [ ] 7.12 Add component tests for partial numeric input, source switching, independent invalid groups, dynamic ports, profiles, compression, squish, comparison, induction modes, warnings, demonstration data, and reset confirmation
+- [x] 7.13 Add a dedicated cylinder lift study with direct entry, 0.1 mm controls, reset, measurement guidance, and unchanged stroke and rod disclosure
 
 ## 8. Results and 360-Degree Visualisation
 
@@ -93,6 +95,7 @@
 - [x] 8.9 Implement wide and narrow responsive layouts that keep primary controls, diagram, summaries, port groups, metric tables, and comparison operable without page-level horizontal scrolling
 - [x] 8.10 Add SVG title and description, visible focus, keyboard-operable controls, labelled inputs, non-colour distinctions, and restrained status announcements
 - [ ] 8.11 Add presentation-model unit tests, SVG geometry fixtures, component accessibility tests, and visual regression cases for standard, wrapped, uncertain, incomplete, compression, squish, time-area, and comparison projects
+- [x] 8.12 Show lifted phases with no-spacer diagram references and a semantic per-port baseline, lifted, and delta table
 
 ## 9. Persistence, Sharing, and Export
 

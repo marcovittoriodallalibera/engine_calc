@@ -59,6 +59,7 @@ test("preserves Unicode through a URL-safe fragment round trip", () => {
   const project = cloneDemonstrationProject();
   project.name = "L’officina di Marco 🔧";
   project.ports[0].label = "Scarico Ø39 µm test";
+  project.compression.baseSpacerThicknessMm = "0,3";
 
   const fragment = encodeProjectFragment(project);
   assert.doesNotMatch(fragment, /[+/=]/u);

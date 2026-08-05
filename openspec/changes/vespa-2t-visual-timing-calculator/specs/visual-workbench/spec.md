@@ -19,6 +19,21 @@ The workbench SHALL recalculate all affected valid results as soon as an authori
 - **WHEN** one field is invalid but other port or induction events remain valid
 - **THEN** the workbench updates and presents the independent valid results rather than replacing the entire project with an error state
 
+### Requirement: Real-time cylinder lift study
+The workbench SHALL provide a dedicated cylinder lift control with direct decimal entry and 0.1 mm decrement and increment actions. For a positive valid lift it SHALL update the active timing diagram and all dependent results immediately, retain the no-spacer configuration as the comparison baseline, and provide a semantic table of baseline, lifted, and signed delta values for every enabled port.
+
+#### Scenario: Step the cylinder upwards
+- **WHEN** the user increases installed cylinder lift by 0.1 mm
+- **THEN** the diagram, exhaust and transfer durations, blowdown, overlaps, time-area, compression, squish, and per-port comparison table update in the same interaction cycle
+
+#### Scenario: Compare without colour
+- **WHEN** a cylinder lift comparison is active
+- **THEN** labelled no-spacer reference markers and the numeric comparison table communicate the baseline independently of colour
+
+#### Scenario: Preserve the mechanical assumption
+- **WHEN** the cylinder lift study is displayed
+- **THEN** the interface states that stroke and connecting-rod length remain unchanged and that compression and squish effects assume the cylinder and head move together without corrective machining
+
 ### Requirement: Locale-tolerant numeric entry
 The workbench SHALL accept either a comma or a point as the decimal separator for manual metric and angular input, while serialising and calculating from one canonical numeric representation.
 
