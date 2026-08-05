@@ -7,6 +7,12 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+trap {
+  $Message = $_.Exception.Message.Replace("%", "%25").Replace("`r", "%0D").Replace("`n", "%0A")
+  Write-Host "::error title=Windows package verification failed::$Message"
+  exit 1
+}
+
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $ResolvedDist = (Resolve-Path -LiteralPath (Join-Path $ProjectRoot $DistDir)).Path
 $SmokeSource = Join-Path ([System.IO.Path]::GetTempPath()) "phase360-smoke-report.json"
@@ -116,6 +122,7 @@ $Portable = Get-SingleFile -Directory $ResolvedDist -Filter "Phase-360-Portable-
 $UnpackedDirectory = Join-Path $ResolvedDist "win-unpacked"
 $UnpackedApp = Get-SingleFile -Directory $UnpackedDirectory -Filter "Phase 360.exe" -Description "unpacked application"
 
+Write-Host "Checking PE headers and Electron fuses."
 [void](Get-PeMachine -Executable $Installer.FullName)
 [void](Get-PeMachine -Executable $Portable.FullName)
 Assert-X64Application -Executable $UnpackedApp.FullName
@@ -127,7 +134,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 $FuseReport = Get-Content -LiteralPath $FuseReportPath -Raw | ConvertFrom-Json
 
+Write-Host "Running win-unpacked smoke."
 $UnpackedSmoke = Invoke-DesktopSmoke -Executable $UnpackedApp.FullName -Label "win-unpacked"
+Write-Host "Running portable smoke."
 $PortableSmoke = Invoke-DesktopSmoke -Executable $Portable.FullName -Label "portable"
 
 $RunnerTemp = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
@@ -136,6 +145,7 @@ if (Test-Path -LiteralPath $InstallDirectory) {
   throw "Refusing to overwrite existing installer smoke directory '$InstallDirectory'."
 }
 
+Write-Host "Installing and running the installed application smoke."
 $InstallerProcess = Start-Process -FilePath $Installer.FullName -ArgumentList @("/S", "/D=$InstallDirectory") -Wait -PassThru
 if ($InstallerProcess.ExitCode -ne 0) {
   throw "NSIS installer exited with code $($InstallerProcess.ExitCode)."
@@ -150,6 +160,7 @@ if ($UninstallProcess.ExitCode -ne 0) {
   throw "NSIS uninstaller exited with code $($UninstallProcess.ExitCode)."
 }
 
+Write-Host "Checking Authenticode status and generating release evidence."
 $SignatureRecords = @(
   Get-SignatureRecord -File $Installer
   Get-SignatureRecord -File $Portable

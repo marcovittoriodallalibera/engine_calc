@@ -53,7 +53,7 @@ jobs:
       - name: Verify packages natively
         shell: pwsh
         run: >-
-          pwsh -NoProfile -File scripts/verify-windows-package.ps1
+          ./scripts/verify-windows-package.ps1
           -DistDir desktop-dist
           -ExpectedSignature NotSigned
 
