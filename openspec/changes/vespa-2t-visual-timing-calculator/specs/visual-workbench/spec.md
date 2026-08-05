@@ -60,6 +60,25 @@ The workbench SHALL visually distinguish authoritative inputs, derived values, m
 - **WHEN** an asymmetric measured event cannot produce one linear port height
 - **THEN** the unavailable height is explained rather than shown as zero or a guessed value
 
+### Requirement: Rotary timing source bridge
+The workbench SHALL let the user choose direct timing angles or crank-and-crankcase arc geometry as the authoritative rotary source. It SHALL show crank arc, crankcase arc, combined physical length, each angular contribution, combined duration, anchored edge and derived edge together so the correspondence remains inspectable without relying on the diagram.
+
+#### Scenario: Edit physical rotary geometry
+- **WHEN** the user changes crankshaft diameter, crank cut-away arc, crankcase opening arc or the active anchor
+- **THEN** the converted component angles, derived edge, timing map, overlap, signed margins and time-area update in the same interaction cycle
+
+#### Scenario: Compare with direct timing
+- **WHEN** valid direct timing and valid arc geometry are both present
+- **THEN** the workbench shows their duration difference while using only the selected source for downstream calculation
+
+#### Scenario: Switch phase anchor
+- **WHEN** the user changes from opening-fixed to closing-fixed while valid geometry is available
+- **THEN** the newly authoritative anchor begins from the previously derived full-precision edge so the event does not jump solely because the anchor mode changed
+
+#### Scenario: Accessible numeric alternative
+- **WHEN** the arc-derived inlet is drawn on the 360-degree timing diagram
+- **THEN** a semantic table also identifies source, opening, closing, duration, physical lengths and converted angular contributions
+
 ### Requirement: 360-degree timing diagram
 The workbench SHALL render a responsive circular timing diagram with TDC at 0 degrees at the top, BDC at 180 degrees at the bottom, and increasing logical cycle angle clockwise. Separate concentric tracks SHALL represent exhaust, each enabled transfer group, rotary inlet when applicable, and analysis overlays.
 

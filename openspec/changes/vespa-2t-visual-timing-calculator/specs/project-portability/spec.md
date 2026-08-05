@@ -30,6 +30,14 @@ The system SHALL define a schema-versioned project document containing authorita
 - **WHEN** a supported project document is imported
 - **THEN** all derived geometry and analysis results are regenerated from its authoritative inputs
 
+#### Scenario: Persist rotary source authority
+- **WHEN** a rotary project uses crank-and-case arc geometry
+- **THEN** the document retains timing source, diameter, both arc lengths, anchor type and anchor value while recalculating the opposite edge and all downstream metrics
+
+#### Scenario: Read a legacy schema version 1 rotary project
+- **WHEN** a supported version 1 document contains direct rotary angles but predates the rotary source and arc fields
+- **THEN** the reader normalises it to direct-angle authority with empty geometry comparison fields and preserves the original timing
+
 #### Scenario: Unsupported newer schema
 - **WHEN** a project document declares a schema version newer than the application supports
 - **THEN** the system rejects the import atomically and explains that the file requires a newer application version

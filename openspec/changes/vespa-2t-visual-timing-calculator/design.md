@@ -249,6 +249,18 @@ The live diagram shows lifted events as the active coloured arcs and labels no-s
 
 Alternative considered: mutating every port source field would make a quick visual update possible but would destroy the measured baseline, break angle-authoritative inputs, and feed derived values back into project authority.
 
+### 17. Rotary arc geometry derives duration while one edge derives phase
+
+Rotary induction has two explicit timing sources: direct opening and closing angles, or crank-and-crankcase arc geometry. For an arc length `l` at effective diameter `D`, the kernel uses `angle = 360 * l / (pi * D)`. Under the Vespa MVP assumption that the crankcase sealing track uses the crankshaft diameter, the crank-web cut-away width and crankcase inlet-opening width add to the duration of any positive idealised circumferential overlap.
+
+Those widths do not locate the event relative to TDC. Arc mode therefore stores one authoritative phase anchor, either opening advance BTDC or closing delay ATDC, and derives the opposite edge by subtracting the anchor from the combined duration. Both sources resolve once into the existing canonical rotary timing before any diagram, margin, overlap or time-area calculation. Direct angles may remain as an inactive comparison but never override the selected source.
+
+Rotary source authority introduces schema version 2. The current reader migrates version 1 documents to direct-angle authority so existing local, JSON and fragment projects remain readable, while older readers reject version 2 instead of silently using inactive comparison angles. Version 2 persists source geometry and the measured anchor, not rounded derived edges.
+
+The measurement contract is deliberately narrow: one continuous crank cut-away, one continuous crankcase opening, true arc lengths on the sealing track, sharp idealised boundaries and a common effective diameter. Chords, multiple disconnected windows, edge radii, axial alignment, leakage, flow, structural strength and crankshaft balance are outside this calculation.
+
+Alternative considered: treating both direct endpoints and geometry-derived endpoints as simultaneous authority would create contradictory states and rounding feedback. Treating arc length alone as a positioned event would invent a phase datum that was never measured.
+
 ## Risks / Trade-offs
 
 - [Users may mistake precise geometry for precise engine behaviour] -> Keep source provenance, uncertainty, model assumptions, and geometric-only notices adjacent to results and in exports.

@@ -77,6 +77,34 @@ Elapsed time at engine speed `n` is:
 milliseconds = degrees * 1000 / (6 n)
 ```
 
+## Rotary inlet arc geometry
+
+The rotary inlet may use direct opening and closing angles or two physical circumferential measurements. For arc length `l` measured at effective diameter `D`:
+
+```text
+circumference = pi D
+arc angle = 360 l / (pi D)
+```
+
+The crank-web cut-away and the crankcase inlet opening are idealised as two continuous angular windows on the same sealing-track diameter. From first positive overlap to final positive overlap, their widths combine:
+
+```text
+geometric inlet duration = crank cut-away angle + crankcase opening angle
+```
+
+The MVP follows the stated Vespa measurement assumption that the crankcase sealing-track diameter equals the crankshaft diameter. Both lengths must be measured along that curved track, not as straight chords. A chord needs a different equation and is outside the current input contract.
+
+The two lengths determine duration, not its absolute position relative to TDC. One edge therefore remains authoritative:
+
+```text
+opening anchored: closing delay ATDC = duration - opening advance BTDC
+closing anchored: opening advance BTDC = duration - closing delay ATDC
+```
+
+The derived timing is then passed through the same canonical rotary interval used by direct angles. Diagram arcs, inlet-to-transfer margins, overlap, triple overlap and time-area therefore have one calculation path.
+
+This is circumferential geometry only. It excludes edge radius, chamfer, axial alignment, leakage, clearance, effective flow area, pressure, crankshaft strength and balance. Patented two-stroke arrangements document crank-web cut-outs opening and closing crankcase passages, while manufacturer instructions treat crank modification and crankcase sealing geometry as distinct physical operations: [US20050139179A1](https://patents.google.com/patent/US20050139179A1/en), [Polini Vespa rotary crank instructions](https://catalogue.polini.com/dep/210_0043.pdf).
+
 ## Compression
 
 For bore `B`, cylinder area `A`, stroke `S`, clearance volume `Vc` and exhaust-roof travel `xE`:
@@ -125,10 +153,10 @@ The importance of inlet time-area has long been examined experimentally, includi
 
 ## What-if effects
 
-Each what-if control is evaluated independently from the current baseline:
+The installed cylinder lift is evaluated as an active assembled configuration. Remaining what-if controls are evaluated independently from that current configuration:
 
 - a head gasket increases clearance volume and squish gap while leaving port timing unchanged
-- a base spacer increases clearance volume and squish gap and moves the cylinder ports relative to piston travel
+- the installed cylinder lift increases clearance volume and squish gap and raises every cylinder port relative to piston travel
 - raising only the exhaust roof increases exhaust duration and reduces trapped compression, while geometric compression remains unchanged if chamber volume is unchanged
 
 The effects are not compounded in the current interface.

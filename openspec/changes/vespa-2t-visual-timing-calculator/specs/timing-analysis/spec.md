@@ -45,6 +45,29 @@ The system SHALL support no induction analysis, rotary-valve induction, and reed
 - **WHEN** the user selects no induction analysis
 - **THEN** cylinder-port calculations remain available and inlet-specific results are omitted
 
+### Requirement: Rotary inlet from crank and crankcase arcs
+The system SHALL optionally derive rotary-inlet duration from a crank-web cut-away arc and a crankcase inlet-opening arc measured on one effective diameter. It SHALL convert each arc using `angle = 360 * arc length / (pi * diameter)`, add the two angular widths, and require one measured opening-before-TDC or closing-after-TDC edge to position the duration. The derived event SHALL use the same canonical rotary interval as direct timing angles.
+
+#### Scenario: Opening edge anchors combined geometry
+- **WHEN** the crank cut-away contributes 150 degrees, the crankcase opening contributes 35 degrees, and the measured inlet opening is 120 degrees BTDC
+- **THEN** the system reports 185 degrees of duration, derives closing at 65 degrees ATDC, and represents the interval from 240 degrees through TDC to 65 degrees
+
+#### Scenario: Closing edge anchors combined geometry
+- **WHEN** the same 185-degree geometry is anchored by a measured closing at 65 degrees ATDC
+- **THEN** the system derives opening at 120 degrees BTDC and produces the same canonical interval
+
+#### Scenario: Arc geometry lacks an anchor
+- **WHEN** both arc lengths and diameter are valid but no measured edge positions them relative to TDC
+- **THEN** the component angles and duration may be described as incomplete geometry, while positioned timing, diagram overlap and margin results remain unavailable
+
+#### Scenario: Measurement convention is explicit
+- **WHEN** rotary arc controls or results are presented
+- **THEN** the system states that lengths are measured along the curved sealing track rather than as straight chords and that the crankcase track is assumed to use the entered crankshaft diameter
+
+#### Scenario: Impossible combined geometry
+- **WHEN** either arc exceeds one circumference, the two arcs combine beyond one cycle, or the anchor exceeds their duration
+- **THEN** the system reports a deterministic invalid-geometry result without inventing an opening or closing edge
+
 ### Requirement: Circular interval operations
 The system SHALL calculate intersections, unions, gaps, and sweeps correctly for intervals that remain within the cycle and for intervals that cross the 0/360-degree boundary.
 

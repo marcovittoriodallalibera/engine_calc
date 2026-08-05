@@ -50,6 +50,7 @@
 - [x] 5.9 Attach geometric-only interpretation notices without blocking valid timing results or inferring performance and flow outcomes
 - [ ] 5.10 Add analysis tests for conventional 180/120-degree timing, staged transfers, wrapped rotary overlap, triple overlap, gaps, asymmetric events, invalid ordering, uncertainty, and RPM conversion
 - [ ] 5.11 Implement and test the signed rotary-inlet opening versus transfer-closing margin per group and for the transfer union, including positive overlap, zero boundary, negative gap, and measured asymmetric closure
+- [x] 5.12 Implement arc-length conversion, combined crank-web and crankcase duration, opening or closing phase anchors, physical-boundary diagnostics, and equivalence tests against direct rotary timing
 
 ## 6. Compression, Squish, Time-Area, and Comparison
 
@@ -81,6 +82,7 @@
 - [x] 7.11 Add clearly labelled demonstration data and confirmed reset behaviour without presenting sample values as tuning recommendations
 - [ ] 7.12 Add component tests for partial numeric input, source switching, independent invalid groups, dynamic ports, profiles, compression, squish, comparison, induction modes, warnings, demonstration data, and reset confirmation
 - [x] 7.13 Add a dedicated cylinder lift study with direct entry, 0.1 mm controls, reset, measurement guidance, and unchanged stroke and rod disclosure
+- [x] 7.14 Add direct-angle versus crank-and-case rotary source controls, true-arc measurement guidance, full-precision anchor switching, and field-level physical constraints
 
 ## 8. Results and 360-Degree Visualisation
 
@@ -96,6 +98,7 @@
 - [x] 8.10 Add SVG title and description, visible focus, keyboard-operable controls, labelled inputs, non-colour distinctions, and restrained status announcements
 - [ ] 8.11 Add presentation-model unit tests, SVG geometry fixtures, component accessibility tests, and visual regression cases for standard, wrapped, uncertain, incomplete, compression, squish, time-area, and comparison projects
 - [x] 8.12 Show lifted phases with no-spacer diagram references and a semantic per-port baseline, lifted, and delta table
+- [x] 8.13 Show rotary physical length, per-component angular contribution, combined duration, anchored and derived edges, source provenance, and direct-angle difference in semantic results
 
 ## 9. Persistence, Sharing, and Export
 
@@ -108,6 +111,7 @@
 - [ ] 9.7 Implement a print stylesheet and printable report containing project identity, authoritative geometry, diagram, event and metric tables, comparison, uncertainty, evidence tiers, warnings, assumptions, and generation date
 - [x] 9.8 Add action feedback that confirms completed save, share, import, and export operations without changing source data or physical-verification status
 - [ ] 9.9 Add persistence and portability tests for restoration, unavailable storage, corrupt local state, schema versions, import limits, fragment round trips, long-link fallback, SVG content, and print structure
+- [x] 9.10 Persist rotary arc authority and normalise legacy schema version 1 projects without changing their direct timing
 
 ## 10. Product Hardening and Verification
 
@@ -128,3 +132,4 @@
 - [ ] 11.4 Configure an immutable static preview deployment with the correct repository base path and no backend project storage
 - [ ] 11.5 Run the full CI, production preview, browser smoke, accessibility, import/export, print, and mathematical acceptance suite against the deployed artefact
 - [ ] 11.6 Record the verified release artefact and rollback target, then publish the preview without selecting a final commercial host or domain
+- [x] 11.7 Document the rotary arc formula, shared-diameter and true-arc assumptions, phase-anchor requirement, source authority, compatibility and excluded predictions

@@ -22,6 +22,90 @@ test("demonstration project produces a complete integrated analysis", () => {
   assert.equal(result.ports.every((port) => port.angleAreaMm2Deg !== null), true);
 });
 
+test("direct timing and equivalent crank-and-case arcs drive identical rotary analysis", () => {
+  const project = cloneDemonstrationProject();
+  project.induction.advanceBtdcDeg = "120";
+  project.induction.delayAtdcDeg = "65";
+  project.induction.crankshaftDiameterMm = "50";
+  project.induction.crankCutawayArcMm = String((Math.PI * 50 * 150) / 360);
+  project.induction.crankcaseWindowArcMm = String((Math.PI * 50 * 35) / 360);
+  project.induction.arcAnchor = "opening-btdc";
+  project.induction.arcAnchorAngleDeg = "120";
+
+  project.induction.timingSource = "direct-angles";
+  const direct = analyseProject(project);
+  project.induction.timingSource = "crank-and-case-arcs";
+  const geometry = analyseProject(project);
+
+  closeTo(geometry.rotary?.durationDeg ?? null, direct.rotary?.durationDeg ?? 0);
+  assert.deepEqual(geometry.rotary?.interval, direct.rotary?.interval);
+  closeTo(
+    geometry.rotary?.unionTransferOverlapDeg ?? null,
+    direct.rotary?.unionTransferOverlapDeg ?? 0,
+  );
+  closeTo(
+    geometry.rotary?.tripleOverlapDeg ?? null,
+    direct.rotary?.tripleOverlapDeg ?? 0,
+  );
+  closeTo(
+    geometry.rotary?.idealisedAngleAreaMm2Deg ?? null,
+    direct.rotary?.idealisedAngleAreaMm2Deg ?? 0,
+  );
+  closeTo(geometry.induction.geometry?.directDurationDifferenceDeg ?? null, 0);
+  closeTo(geometry.induction.direct?.equivalentCombinedArcMm ?? null, (Math.PI * 50 * 185) / 360);
+});
+
+test("a larger crankshaft diameter shortens fixed arc timing while preserving its anchor", () => {
+  const project = cloneDemonstrationProject();
+  project.induction.timingSource = "crank-and-case-arcs";
+  project.induction.crankshaftDiameterMm = "50";
+  project.induction.crankCutawayArcMm = "60";
+  project.induction.crankcaseWindowArcMm = "20";
+  project.induction.arcAnchor = "opening-btdc";
+  project.induction.arcAnchorAngleDeg = "100";
+  const smaller = analyseProject(project);
+
+  project.induction.crankshaftDiameterMm = "60";
+  const larger = analyseProject(project);
+
+  assert.ok((larger.rotary?.durationDeg ?? 0) < (smaller.rotary?.durationDeg ?? 0));
+  closeTo(larger.rotary?.advanceBeforeTdcDeg ?? null, 100);
+  assert.ok(
+    (larger.rotary?.delayAfterTdcDeg ?? Number.POSITIVE_INFINITY) <
+      (smaller.rotary?.delayAfterTdcDeg ?? 0),
+  );
+});
+
+test("arc contributions remain available when the phase anchor is missing", () => {
+  const project = cloneDemonstrationProject();
+  project.induction.timingSource = "crank-and-case-arcs";
+  project.induction.arcAnchorAngleDeg = "";
+
+  const result = analyseProject(project);
+
+  assert.ok((result.induction.geometry?.durationDeg ?? 0) > 0);
+  assert.equal(result.induction.geometry?.advanceBeforeTdcDeg, null);
+  assert.equal(result.induction.geometry?.delayAfterTdcDeg, null);
+  assert.equal(result.rotary, null);
+  assert.match(result.diagnostics.join(" "), /one timing anchor/u);
+});
+
+test("full-cycle arc warning remains visible while the phase anchor is missing", () => {
+  const project = cloneDemonstrationProject();
+  const circumference = Math.PI * 87;
+  project.induction.timingSource = "crank-and-case-arcs";
+  project.induction.crankshaftDiameterMm = "87";
+  project.induction.crankCutawayArcMm = String(circumference / 3);
+  project.induction.crankcaseWindowArcMm = String((2 * circumference) / 3);
+  project.induction.arcAnchorAngleDeg = "";
+
+  const result = analyseProject(project);
+
+  assert.equal(result.induction.geometry?.durationDeg, 360);
+  assert.match(result.diagnostics.join(" "), /full 360-degree cycle/u);
+  assert.match(result.diagnostics.join(" "), /one timing anchor/u);
+});
+
 test("equivalent source modes preserve the same physical port event", () => {
   const project = cloneDemonstrationProject();
   const first = analyseProject(project);

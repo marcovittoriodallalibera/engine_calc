@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   MAX_PROJECT_BYTES,
   MAX_SHARE_FRAGMENT_LENGTH,
+  LEGACY_PROJECT_STORAGE_KEY,
+  PROJECT_SCHEMA_VERSION,
   PROJECT_STORAGE_KEY,
   cloneDemonstrationProject,
   serialiseProject,
@@ -73,6 +75,31 @@ test("saves, restores and clears the authoritative project", () => {
   assert.equal(storage.values.has(PROJECT_STORAGE_KEY), false);
 });
 
+test("restores and migrates a legacy storage project", () => {
+  const storage = new FakeStorage();
+  const legacy = cloneDemonstrationProject() as unknown as {
+    schemaVersion: number;
+    induction: Record<string, unknown>;
+  };
+  legacy.schemaVersion = 1;
+  delete legacy.induction.timingSource;
+  delete legacy.induction.crankshaftDiameterMm;
+  delete legacy.induction.crankCutawayArcMm;
+  delete legacy.induction.crankcaseWindowArcMm;
+  delete legacy.induction.arcAnchor;
+  delete legacy.induction.arcAnchorAngleDeg;
+  storage.values.set(LEGACY_PROJECT_STORAGE_KEY, JSON.stringify(legacy));
+
+  const restored = loadProjectFromStorage(storage);
+
+  assert.equal(restored.ok, true);
+  assert.equal(restored.status, "loaded");
+  if (restored.ok && restored.project) {
+    assert.equal(restored.project.schemaVersion, PROJECT_SCHEMA_VERSION);
+    assert.equal(restored.project.induction.timingSource, "direct-angles");
+  }
+});
+
 test("reports storage failures and invalid stored state without throwing", () => {
   const failing = new FailingStorage();
   assert.doesNotThrow(() => loadProjectFromStorage(failing));
@@ -89,6 +116,20 @@ test("reports storage failures and invalid stored state without throwing", () =>
 
   assert.equal(loadProjectFromStorage(null).status, "unavailable");
   assert.equal(saveProjectToStorage(cloneDemonstrationProject(), null).ok, false);
+});
+
+test("does not save, export or share an invalid active rotary source", () => {
+  const project = cloneDemonstrationProject();
+  project.induction.crankcaseWindowArcMm = "0";
+  const storage = new FakeStorage();
+
+  assert.equal(saveProjectToStorage(project, storage).ok, false);
+  assert.equal(prepareProjectDownload(project).ok, false);
+  assert.equal(
+    buildProjectShareUrl(project, "https://example.test/").ok,
+    false,
+  );
+  assert.equal(storage.values.has(PROJECT_STORAGE_KEY), false);
 });
 
 test("imports a bounded project file atomically", async () => {

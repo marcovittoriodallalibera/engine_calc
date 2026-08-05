@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  arcLengthToDegrees,
   blowdownFromDurations,
   circularIntervalDuration,
   circularIntervalOverlap,
+  degreesToArcLength,
   degreesAtRpmToMilliseconds,
   intakeTransferMargin,
   rotaryValveTiming,
+  rotaryValveTimingFromArcGeometry,
   splitCircularInterval,
   symmetricPortTimingFromOpening,
 } from "../../lib/engine/index.ts";
@@ -52,6 +55,137 @@ test("rotary valve advance and delay form a wrapped interval", () => {
     durationDeg: 185,
     interval: { startDeg: 240, endDeg: 65, fullCircle: false },
   });
+});
+
+test("direct rotary timing warns when the inlet remains open for the full cycle", () => {
+  const result = rotaryValveTiming(180, 180);
+
+  assert.equal(result.value?.durationDeg, 360);
+  assert.equal(result.value?.interval.fullCircle, true);
+  assert.ok(
+    result.diagnostics.some(
+      (item) => item.code === "ROTARY_INLET_LEAVES_NO_CLOSED_INTERVAL",
+    ),
+  );
+});
+
+test("circumferential arc length converts to crank degrees without intermediate rounding", () => {
+  const converted = arcLengthToDegrees(20, 50);
+  const reversed = degreesToArcLength(converted.value!.degrees, 50);
+
+  assert.ok(Math.abs(converted.value!.degrees - 45.83662361046586) < 1e-12);
+  assert.ok(Math.abs(reversed.value!.arcLengthMm - 20) < 1e-12);
+});
+
+test("crank cutaway and crankcase window arcs combine into inlet duration", () => {
+  const result = rotaryValveTimingFromArcGeometry({
+    crankshaftDiameterMm: 50,
+    crankCutawayArcMm: (Math.PI * 50 * 150) / 360,
+    crankcaseWindowArcMm: (Math.PI * 50 * 35) / 360,
+    anchor: "opening-btdc",
+    anchorAngleDeg: 120,
+  });
+
+  assert.ok(result.value);
+  assert.ok(Math.abs(result.value.crankCutawayDeg - 150) < 1e-12);
+  assert.ok(Math.abs(result.value.crankcaseWindowDeg - 35) < 1e-12);
+  assert.ok(Math.abs(result.value.durationDeg - 185) < 1e-12);
+  assert.ok(Math.abs(result.value.delayAfterTdcDeg - 65) < 1e-12);
+  assert.deepEqual(result.value.interval, {
+    startDeg: 240,
+    endDeg: 65,
+    fullCircle: false,
+  });
+});
+
+test("either inlet edge can anchor the same arc-derived timing", () => {
+  const common = {
+    crankshaftDiameterMm: 50,
+    crankCutawayArcMm: (Math.PI * 50 * 150) / 360,
+    crankcaseWindowArcMm: (Math.PI * 50 * 35) / 360,
+  };
+  const opening = rotaryValveTimingFromArcGeometry({
+    ...common,
+    anchor: "opening-btdc",
+    anchorAngleDeg: 120,
+  });
+  const closing = rotaryValveTimingFromArcGeometry({
+    ...common,
+    anchor: "closing-atdc",
+    anchorAngleDeg: 65,
+  });
+
+  assert.deepEqual(opening.value?.interval, closing.value?.interval);
+  assert.equal(opening.value?.advanceBeforeTdcDeg, closing.value?.advanceBeforeTdcDeg);
+  assert.ok(
+    Math.abs(
+      (opening.value?.delayAfterTdcDeg ?? 0) -
+        (closing.value?.delayAfterTdcDeg ?? 0),
+    ) < 1e-12,
+  );
+});
+
+test("impossible rotary arc geometry returns diagnostics", () => {
+  const circumference = Math.PI * 50;
+  const tooLong = rotaryValveTimingFromArcGeometry({
+    crankshaftDiameterMm: 50,
+    crankCutawayArcMm: circumference * 0.75,
+    crankcaseWindowArcMm: circumference * 0.5,
+    anchor: "opening-btdc",
+    anchorAngleDeg: 120,
+  });
+  const anchorOutsideDuration = rotaryValveTimingFromArcGeometry({
+    crankshaftDiameterMm: 50,
+    crankCutawayArcMm: circumference / 9,
+    crankcaseWindowArcMm: circumference / 18,
+    anchor: "opening-btdc",
+    anchorAngleDeg: 90,
+  });
+
+  assert.equal(tooLong.value, null);
+  assert.ok(
+    tooLong.diagnostics.some(
+      (item) => item.code === "COMBINED_ROTARY_ARCS_EXCEED_CYCLE",
+    ),
+  );
+  assert.equal(anchorOutsideDuration.value, null);
+  assert.ok(
+    anchorOutsideDuration.diagnostics.some(
+      (item) => item.code === "ROTARY_ARC_ANCHOR_OUTSIDE_DURATION",
+    ),
+  );
+});
+
+test("rotary timing requires two positive arcs and tolerates a full circumference", () => {
+  const circumference = Math.PI * 87;
+  const missingWindow = rotaryValveTimingFromArcGeometry({
+    crankshaftDiameterMm: 87,
+    crankCutawayArcMm: circumference / 2,
+    crankcaseWindowArcMm: 0,
+    anchor: "opening-btdc",
+    anchorAngleDeg: 90,
+  });
+  const fullCycle = rotaryValveTimingFromArcGeometry({
+    crankshaftDiameterMm: 87,
+    crankCutawayArcMm: circumference / 7,
+    crankcaseWindowArcMm: (6 * circumference) / 7,
+    anchor: "opening-btdc",
+    anchorAngleDeg: 120,
+  });
+
+  assert.equal(missingWindow.value, null);
+  assert.ok(
+    missingWindow.diagnostics.some(
+      (item) => item.code === "NOT_POSITIVE" && item.field === "crankcaseWindowArcMm",
+    ),
+  );
+  assert.equal(fullCycle.value?.durationDeg, 360);
+  assert.equal(fullCycle.value?.interval.fullCircle, true);
+  assert.ok(
+    fullCycle.diagnostics.some(
+      (item) => item.code === "ROTARY_INLET_LEAVES_NO_CLOSED_INTERVAL",
+    ),
+  );
 });
 
 test("blowdown from symmetric durations is half their duration difference", () => {

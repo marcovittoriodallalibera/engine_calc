@@ -1,6 +1,7 @@
 import {
   MAX_PROJECT_BYTES,
   MAX_SHARE_FRAGMENT_LENGTH,
+  LEGACY_PROJECT_STORAGE_KEY,
   PROJECT_STORAGE_KEY,
   decodeProjectFragment,
   encodeProjectFragment,
@@ -77,7 +78,11 @@ export function loadProjectFromStorage(
   }
 
   try {
-    const stored = repository.getItem(key);
+    const stored =
+      repository.getItem(key) ??
+      (key === PROJECT_STORAGE_KEY
+        ? repository.getItem(LEGACY_PROJECT_STORAGE_KEY)
+        : null);
     if (stored === null) {
       return {
         ok: true,

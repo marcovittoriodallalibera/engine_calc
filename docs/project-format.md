@@ -2,7 +2,7 @@
 
 ## Schema version
 
-Portable projects are JSON objects with `schemaVersion: 1`. A document stores authoritative editable inputs and presentation preferences. It does not store derived timing, overlap, compression or time-area results.
+Current portable projects are JSON objects with `schemaVersion: 2`. A document stores authoritative editable inputs and presentation preferences. It does not store derived timing, overlap, compression or time-area results.
 
 The principal sections are:
 
@@ -21,6 +21,13 @@ Each port has a stable identifier, label, category, enabled state, authoritative
 
 Compression records whether the authoritative clearance volume is a measured assembled total or a signed component sum. Squish geometry records whether bowl diameter or radial band width is authoritative.
 
+Rotary induction records one authoritative timing source:
+
+- `direct-angles` stores opening advance before TDC and closing delay after TDC
+- `crank-and-case-arcs` stores crankshaft diameter, crank-web cut-away arc, crankcase opening arc, and one opening or closing anchor
+
+Both source representations may remain in the document for comparison, but only `timingSource` drives calculated timing. Derived angles are recalculated and are not written back as authoritative input.
+
 ## Validation boundary
 
 Imported documents are treated as untrusted data. Before replacement, the complete document is checked for:
@@ -31,6 +38,7 @@ Imported documents are treated as untrusted data. Before replacement, the comple
 - a bounded number of port groups
 - known categories, source modes and induction modes
 - expected string and boolean field types
+- a complete, physically bounded active rotary source, including positive arc widths and an anchor within the derived duration
 
 Malformed or unsupported data leaves the current project unchanged.
 
@@ -49,6 +57,8 @@ An encoded-length cap avoids creating unreliable URLs. JSON export is the fallba
 ## Compatibility
 
 A project with a newer schema version is rejected with a clear version message. Future migrations must be explicit and tested. An unreadable stored payload must remain recoverable rather than being silently overwritten during a failed migration.
+
+The current reader remains backward compatible with legacy schema version 1 documents. Their missing rotary timing source is normalised to `direct-angles`, empty geometry fields are added, and the in-memory project is migrated to version 2. Version 2 prevents an older reader from silently treating inactive direct-angle comparison fields as the authority for an arc-sourced project.
 
 ## Privacy
 

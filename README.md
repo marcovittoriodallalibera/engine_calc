@@ -10,7 +10,8 @@ The current release is an MVP. Calculation, local persistence, portable projects
 - Exhaust, primary transfer, secondary transfer and boost-port opening, closing and duration
 - Dynamic additional transfer groups with independent source modes and uncertainty
 - Exhaust-to-transfer blowdown, phase difference, simultaneous opening and transfer staging
-- Rotary inlet timing, signed inlet-to-transfer margin, overlap and triple overlap
+- Rotary inlet timing from direct angles or combined crank-web and crankcase arc geometry, with an anchored opening or closing edge
+- Signed inlet-to-transfer margin, overlap and triple overlap from the resolved rotary timing
 - Degrees converted to elapsed milliseconds at the selected engine speed
 - Displacement and mean piston speed
 - Geometric and trapped compression ratios, trapped swept volume and target clearance volume

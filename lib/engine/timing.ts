@@ -41,6 +41,46 @@ export interface RotaryValveTiming {
   interval: CircularInterval;
 }
 
+export type RotaryValveArcAnchor = "opening-btdc" | "closing-atdc";
+
+export interface RotaryValveArcGeometryInput {
+  crankshaftDiameterMm: number;
+  crankCutawayArcMm: number;
+  crankcaseWindowArcMm: number;
+  anchor: RotaryValveArcAnchor;
+  anchorAngleDeg: number;
+}
+
+export interface RotaryValveArcGeometry extends RotaryValveTiming {
+  crankshaftDiameterMm: number;
+  circumferenceMm: number;
+  crankCutawayArcMm: number;
+  crankCutawayDeg: number;
+  crankcaseWindowArcMm: number;
+  crankcaseWindowDeg: number;
+  combinedArcMm: number;
+  anchor: RotaryValveArcAnchor;
+  anchorAngleDeg: number;
+}
+
+export interface RotaryValveArcDuration {
+  crankshaftDiameterMm: number;
+  circumferenceMm: number;
+  crankCutawayArcMm: number;
+  crankCutawayDeg: number;
+  crankcaseWindowArcMm: number;
+  crankcaseWindowDeg: number;
+  combinedArcMm: number;
+  durationDeg: number;
+}
+
+export interface ArcLengthAngleConversion {
+  diameterMm: number;
+  circumferenceMm: number;
+  arcLengthMm: number;
+  degrees: number;
+}
+
 export interface BlowdownResult {
   exhaustOpeningAngleDeg: number;
   transferOpeningAngleDeg: number;
@@ -201,19 +241,230 @@ export function rotaryValveTiming(
       ),
     );
   }
+  if (durationDeg === 360) {
+    diagnostics.push(
+      warningDiagnostic(
+        "ROTARY_INLET_LEAVES_NO_CLOSED_INTERVAL",
+        "The rotary inlet remains open for the full 360-degree cycle.",
+      ),
+    );
+  }
+  if (diagnostics.some((item) => item.severity === "error")) {
+    return calculationResult(null, diagnostics);
+  }
+  return calculationResult(
+    {
+      advanceBeforeTdcDeg,
+      delayAfterTdcDeg,
+      durationDeg,
+      interval: {
+        startDeg: normaliseDegrees(360 - advanceBeforeTdcDeg),
+        endDeg: normaliseDegrees(delayAfterTdcDeg),
+        fullCircle: durationDeg === 360,
+      },
+    },
+    diagnostics,
+  );
+}
+
+export function arcLengthToDegrees(
+  arcLengthMm: number,
+  diameterMm: number,
+): CalculationResult<ArcLengthAngleConversion> {
+  const diagnostics = collectDiagnostics(
+    nonNegativeNumberDiagnostic(arcLengthMm, "arcLengthMm"),
+    positiveNumberDiagnostic(diameterMm, "diameterMm"),
+  );
+  const circumferenceMm = Math.PI * diameterMm;
+  const toleranceMm =
+    Number.isFinite(circumferenceMm) && circumferenceMm > 0
+      ? Math.max(1, circumferenceMm) * 1e-12
+      : 0;
+  if (
+    Number.isFinite(arcLengthMm) &&
+    Number.isFinite(circumferenceMm) &&
+    circumferenceMm > 0 &&
+    arcLengthMm > circumferenceMm + toleranceMm
+  ) {
+    diagnostics.push(
+      errorDiagnostic(
+        "ARC_EXCEEDS_CIRCUMFERENCE",
+        "arcLengthMm cannot exceed one circumference at the selected diameter.",
+        "arcLengthMm",
+      ),
+    );
+  }
   if (diagnostics.some((item) => item.severity === "error")) {
     return calculationResult(null, diagnostics);
   }
   return calculationResult({
-    advanceBeforeTdcDeg,
-    delayAfterTdcDeg,
-    durationDeg,
-    interval: {
-      startDeg: normaliseDegrees(360 - advanceBeforeTdcDeg),
-      endDeg: normaliseDegrees(delayAfterTdcDeg),
-      fullCircle: durationDeg === 360,
-    },
+    diameterMm,
+    circumferenceMm,
+    arcLengthMm,
+    degrees:
+      Math.abs(arcLengthMm - circumferenceMm) <= toleranceMm
+        ? 360
+        : (arcLengthMm * 360) / circumferenceMm,
   });
+}
+
+export function degreesToArcLength(
+  degrees: number,
+  diameterMm: number,
+): CalculationResult<ArcLengthAngleConversion> {
+  const diagnostics = collectDiagnostics(
+    nonNegativeNumberDiagnostic(degrees, "degrees"),
+    positiveNumberDiagnostic(diameterMm, "diameterMm"),
+  );
+  if (Number.isFinite(degrees) && degrees > 360) {
+    diagnostics.push(
+      errorDiagnostic(
+        "ANGLE_EXCEEDS_CYCLE",
+        "degrees cannot exceed 360 degrees.",
+        "degrees",
+      ),
+    );
+  }
+  if (diagnostics.some((item) => item.severity === "error")) {
+    return calculationResult(null, diagnostics);
+  }
+  const circumferenceMm = Math.PI * diameterMm;
+  const arcLengthMm = (circumferenceMm * degrees) / 360;
+  return calculationResult({
+    diameterMm,
+    circumferenceMm,
+    arcLengthMm,
+    degrees,
+  });
+}
+
+export function rotaryValveDurationFromArcGeometry(
+  input: Omit<RotaryValveArcGeometryInput, "anchor" | "anchorAngleDeg">,
+): CalculationResult<RotaryValveArcDuration> {
+  const crankArc = arcLengthToDegrees(
+    input.crankCutawayArcMm,
+    input.crankshaftDiameterMm,
+  );
+  const crankcaseArc = arcLengthToDegrees(
+    input.crankcaseWindowArcMm,
+    input.crankshaftDiameterMm,
+  );
+  const diagnostics = [...crankArc.diagnostics, ...crankcaseArc.diagnostics];
+  diagnostics.push(
+    ...collectDiagnostics(
+      positiveNumberDiagnostic(input.crankCutawayArcMm, "crankCutawayArcMm"),
+      positiveNumberDiagnostic(
+        input.crankcaseWindowArcMm,
+        "crankcaseWindowArcMm",
+      ),
+    ),
+  );
+  if (!crankArc.value || !crankcaseArc.value) {
+    return calculationResult(null, diagnostics);
+  }
+
+  const combinedArcMm = input.crankCutawayArcMm + input.crankcaseWindowArcMm;
+  const toleranceMm = Math.max(1, crankArc.value.circumferenceMm) * 1e-12;
+  const durationDeg =
+    Math.abs(combinedArcMm - crankArc.value.circumferenceMm) <= toleranceMm
+      ? 360
+      : (combinedArcMm * 360) / crankArc.value.circumferenceMm;
+  if (combinedArcMm > crankArc.value.circumferenceMm + toleranceMm) {
+    diagnostics.push(
+      errorDiagnostic(
+        "COMBINED_ROTARY_ARCS_EXCEED_CYCLE",
+        "The crank cutaway and crankcase window combine to more than 360 degrees.",
+      ),
+    );
+  }
+  if (diagnostics.some((item) => item.severity === "error")) {
+    return calculationResult(null, diagnostics);
+  }
+  if (durationDeg === 360) {
+    diagnostics.push(
+      warningDiagnostic(
+        "ROTARY_INLET_LEAVES_NO_CLOSED_INTERVAL",
+        "The combined arcs keep the rotary inlet open for the full 360-degree cycle.",
+      ),
+    );
+  }
+
+  return calculationResult(
+    {
+      crankshaftDiameterMm: input.crankshaftDiameterMm,
+      circumferenceMm: crankArc.value.circumferenceMm,
+      crankCutawayArcMm: input.crankCutawayArcMm,
+      crankCutawayDeg: crankArc.value.degrees,
+      crankcaseWindowArcMm: input.crankcaseWindowArcMm,
+      crankcaseWindowDeg: crankcaseArc.value.degrees,
+      combinedArcMm,
+      durationDeg,
+    },
+    diagnostics,
+  );
+}
+
+export function rotaryValveTimingFromArcGeometry(
+  input: RotaryValveArcGeometryInput,
+): CalculationResult<RotaryValveArcGeometry> {
+  const duration = rotaryValveDurationFromArcGeometry(input);
+  const diagnostics = [...duration.diagnostics];
+  diagnostics.push(
+    ...collectDiagnostics(
+      nonNegativeNumberDiagnostic(input.anchorAngleDeg, "anchorAngleDeg"),
+    ),
+  );
+  if (input.anchor !== "opening-btdc" && input.anchor !== "closing-atdc") {
+    diagnostics.push(
+      errorDiagnostic(
+        "UNKNOWN_ROTARY_ARC_ANCHOR",
+        "anchor must identify the opening or closing edge.",
+        "anchor",
+      ),
+    );
+  }
+  if (!duration.value) return calculationResult(null, diagnostics);
+  if (
+    Number.isFinite(input.anchorAngleDeg) &&
+    input.anchorAngleDeg > duration.value.durationDeg + 1e-10
+  ) {
+    diagnostics.push(
+      errorDiagnostic(
+        "ROTARY_ARC_ANCHOR_OUTSIDE_DURATION",
+        "The fixed edge angle cannot exceed the combined inlet duration.",
+        "anchorAngleDeg",
+      ),
+    );
+  }
+  if (diagnostics.some((item) => item.severity === "error")) {
+    return calculationResult(null, diagnostics);
+  }
+
+  const resolvedAnchorAngleDeg = Math.min(
+    input.anchorAngleDeg,
+    duration.value.durationDeg,
+  );
+  const advanceBeforeTdcDeg =
+    input.anchor === "opening-btdc"
+      ? resolvedAnchorAngleDeg
+      : duration.value.durationDeg - resolvedAnchorAngleDeg;
+  const delayAfterTdcDeg =
+    input.anchor === "closing-atdc"
+      ? resolvedAnchorAngleDeg
+      : duration.value.durationDeg - resolvedAnchorAngleDeg;
+  const timing = rotaryValveTiming(advanceBeforeTdcDeg, delayAfterTdcDeg);
+  diagnostics.push(...timing.diagnostics);
+  if (!timing.value) return calculationResult(null, diagnostics);
+
+  return calculationResult(
+    {
+      ...timing.value,
+      ...duration.value,
+      anchor: input.anchor,
+      anchorAngleDeg: resolvedAnchorAngleDeg,
+    },
+    diagnostics,
+  );
 }
 
 export function blowdownFromOpeningAngles(

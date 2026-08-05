@@ -14,7 +14,7 @@ import {
   validateProjectDocument,
 } from "../../lib/project/model.ts";
 
-test("serialises and parses a complete schema version 1 project", () => {
+test("serialises and parses a complete current-schema project", () => {
   const project = cloneDemonstrationProject();
   const json = serialiseProject(project);
   const parsed = parseProjectJson(json);
@@ -22,6 +22,47 @@ test("serialises and parses a complete schema version 1 project", () => {
   assert.equal(project.schemaVersion, PROJECT_SCHEMA_VERSION);
   assert.equal(parsed.ok, true);
   if (parsed.ok) assert.deepEqual(parsed.project, project);
+});
+
+test("normalises legacy schema version 1 projects to direct rotary timing", () => {
+  const legacy = cloneDemonstrationProject() as unknown as {
+    schemaVersion: number;
+    induction: Record<string, unknown>;
+  };
+  legacy.schemaVersion = 1;
+  delete legacy.induction.timingSource;
+  delete legacy.induction.crankshaftDiameterMm;
+  delete legacy.induction.crankCutawayArcMm;
+  delete legacy.induction.crankcaseWindowArcMm;
+  delete legacy.induction.arcAnchor;
+  delete legacy.induction.arcAnchorAngleDeg;
+
+  const parsed = parseProjectJson(JSON.stringify(legacy));
+
+  assert.equal(parsed.ok, true);
+  if (parsed.ok) {
+    assert.equal(parsed.project.induction.timingSource, "direct-angles");
+    assert.equal(parsed.project.induction.crankshaftDiameterMm, "");
+    assert.equal(parsed.project.induction.crankCutawayArcMm, "");
+    assert.equal(parsed.project.induction.crankcaseWindowArcMm, "");
+    assert.equal(parsed.project.induction.arcAnchor, "opening-btdc");
+    assert.equal(parsed.project.induction.arcAnchorAngleDeg, "");
+    assert.equal(parsed.project.schemaVersion, PROJECT_SCHEMA_VERSION);
+  }
+});
+
+test("rejects impossible active rotary geometry and strips unknown imported fields", () => {
+  const impossible = cloneDemonstrationProject();
+  impossible.induction.crankshaftDiameterMm = "0";
+  assert.equal(validateProjectDocument(impossible).ok, false);
+
+  const untrusted = cloneDemonstrationProject() as unknown as Record<string, unknown>;
+  untrusted.derived = { powerHp: 99 };
+  const validation = validateProjectDocument(untrusted);
+  assert.equal(validation.ok, true);
+  if (validation.ok) {
+    assert.equal("derived" in (validation.project as unknown as Record<string, unknown>), false);
+  }
 });
 
 test("rejects malformed JSON and a newer schema", () => {

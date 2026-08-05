@@ -1,6 +1,7 @@
 import {
   circularIntervalOverlap,
   crankAnglesFromTdcTravel,
+  degreesToArcLength,
   degreesAtRpmToMilliseconds,
   displacement,
   geometricCompressionRatio,
@@ -9,6 +10,8 @@ import {
   meanPistonSpeed,
   pistonTravelFromTdc,
   rotaryValveTiming,
+  rotaryValveDurationFromArcGeometry,
+  rotaryValveTimingFromArcGeometry,
   specificTimeArea,
   splitCircularInterval,
   squishGapStatistics,
@@ -25,6 +28,7 @@ import {
   parseLocaleNumber,
   type EngineProjectDraft,
   type PortDraft,
+  type RotaryTimingSource,
 } from "../project/model.ts";
 
 export interface PortAnalysis {
@@ -68,6 +72,31 @@ export interface TransferAnalysis {
   valveRelationship: "overlap" | "gap" | "coincident" | "not-applicable";
 }
 
+export interface RotaryInductionAnalysis {
+  timingSource: RotaryTimingSource;
+  direct: {
+    advanceBeforeTdcDeg: number;
+    delayAfterTdcDeg: number;
+    durationDeg: number;
+    equivalentCombinedArcMm: number | null;
+  } | null;
+  geometry: {
+    crankshaftDiameterMm: number;
+    circumferenceMm: number;
+    crankCutawayArcMm: number;
+    crankCutawayDeg: number;
+    crankcaseWindowArcMm: number;
+    crankcaseWindowDeg: number;
+    combinedArcMm: number;
+    durationDeg: number;
+    anchor: EngineProjectDraft["induction"]["arcAnchor"];
+    anchorAngleDeg: number | null;
+    advanceBeforeTdcDeg: number | null;
+    delayAfterTdcDeg: number | null;
+    directDurationDifferenceDeg: number | null;
+  } | null;
+}
+
 interface EngineProjectAnalysisCore {
   validGeometry: boolean;
   displacementCc: number | null;
@@ -75,7 +104,11 @@ interface EngineProjectAnalysisCore {
   ports: PortAnalysis[];
   exhaust: PortAnalysis | null;
   transfers: TransferAnalysis[];
+  induction: RotaryInductionAnalysis;
   rotary: {
+    source: RotaryTimingSource;
+    advanceBeforeTdcDeg: number;
+    delayAfterTdcDeg: number;
     durationDeg: number;
     durationMs: number | null;
     interval: CircularInterval;
@@ -175,6 +208,119 @@ function diagnosticMessages(
 function durationMs(degrees: number, rpm: number | null): number | null {
   if (rpm === null) return null;
   return degreesAtRpmToMilliseconds(degrees, rpm).value?.milliseconds ?? null;
+}
+
+function analyseRotaryInduction(
+  project: EngineProjectDraft,
+): {
+  analysis: RotaryInductionAnalysis;
+  timing: ReturnType<typeof rotaryValveTiming>["value"];
+  diagnostics: string[];
+} {
+  const timingSource = project.induction.timingSource ?? "direct-angles";
+  const advance = parseLocaleNumber(project.induction.advanceBtdcDeg);
+  const delay = parseLocaleNumber(project.induction.delayAtdcDeg);
+  const directResult =
+    advance !== null && delay !== null ? rotaryValveTiming(advance, delay) : null;
+  const direct = directResult?.value
+    ? {
+        advanceBeforeTdcDeg: directResult.value.advanceBeforeTdcDeg,
+        delayAfterTdcDeg: directResult.value.delayAfterTdcDeg,
+        durationDeg: directResult.value.durationDeg,
+        equivalentCombinedArcMm: null as number | null,
+      }
+    : null;
+
+  const crankshaftDiameterMm = parseLocaleNumber(
+    project.induction.crankshaftDiameterMm,
+  );
+  const crankCutawayArcMm = parseLocaleNumber(project.induction.crankCutawayArcMm);
+  const crankcaseWindowArcMm = parseLocaleNumber(
+    project.induction.crankcaseWindowArcMm,
+  );
+  const anchorAngleDeg = parseLocaleNumber(project.induction.arcAnchorAngleDeg);
+  const geometryDurationResult =
+    crankshaftDiameterMm !== null &&
+    crankCutawayArcMm !== null &&
+    crankcaseWindowArcMm !== null
+      ? rotaryValveDurationFromArcGeometry({
+          crankshaftDiameterMm,
+          crankCutawayArcMm,
+          crankcaseWindowArcMm,
+        })
+      : null;
+  const geometryResult =
+    crankshaftDiameterMm !== null &&
+    crankCutawayArcMm !== null &&
+    crankcaseWindowArcMm !== null &&
+    anchorAngleDeg !== null
+      ? rotaryValveTimingFromArcGeometry({
+          crankshaftDiameterMm,
+          crankCutawayArcMm,
+          crankcaseWindowArcMm,
+          anchor: project.induction.arcAnchor,
+          anchorAngleDeg,
+        })
+      : null;
+
+  if (direct && crankshaftDiameterMm !== null && crankshaftDiameterMm > 0) {
+    direct.equivalentCombinedArcMm =
+      degreesToArcLength(direct.durationDeg, crankshaftDiameterMm).value
+        ?.arcLengthMm ?? null;
+  }
+  const geometry = geometryDurationResult?.value
+    ? {
+        crankshaftDiameterMm: geometryDurationResult.value.crankshaftDiameterMm,
+        circumferenceMm: geometryDurationResult.value.circumferenceMm,
+        crankCutawayArcMm: geometryDurationResult.value.crankCutawayArcMm,
+        crankCutawayDeg: geometryDurationResult.value.crankCutawayDeg,
+        crankcaseWindowArcMm: geometryDurationResult.value.crankcaseWindowArcMm,
+        crankcaseWindowDeg: geometryDurationResult.value.crankcaseWindowDeg,
+        combinedArcMm: geometryDurationResult.value.combinedArcMm,
+        durationDeg: geometryDurationResult.value.durationDeg,
+        anchor: project.induction.arcAnchor,
+        anchorAngleDeg,
+        advanceBeforeTdcDeg:
+          geometryResult?.value?.advanceBeforeTdcDeg ?? null,
+        delayAfterTdcDeg: geometryResult?.value?.delayAfterTdcDeg ?? null,
+        directDurationDifferenceDeg: direct
+          ? geometryDurationResult.value.durationDeg - direct.durationDeg
+          : null,
+      }
+    : null;
+
+  const activeResult =
+    timingSource === "crank-and-case-arcs" ? geometryResult : directResult;
+  const diagnostics: string[] = [];
+  if (project.induction.mode === "rotary") {
+    if (activeResult) {
+      diagnostics.push(...diagnosticMessages(activeResult));
+    } else if (timingSource === "crank-and-case-arcs") {
+      if (geometryResult) {
+        diagnostics.push(...diagnosticMessages(geometryResult));
+      } else if (geometryDurationResult?.value) {
+        diagnostics.push(...diagnosticMessages(geometryDurationResult));
+        diagnostics.push(
+          "Enter one timing anchor to position the arc-derived duration relative to TDC.",
+        );
+      } else if (geometryDurationResult) {
+        diagnostics.push(...diagnosticMessages(geometryDurationResult));
+      } else {
+        diagnostics.push(
+          "Enter a crankshaft diameter, both circumferential arc lengths and one timing anchor to position the rotary inlet.",
+        );
+      }
+    } else {
+      diagnostics.push(
+        "Enter both direct rotary timing edges to position the inlet relative to TDC.",
+      );
+    }
+  }
+  return {
+    analysis: { timingSource, direct, geometry },
+    timing: project.induction.mode === "rotary" ? activeResult?.value ?? null : null,
+    diagnostics,
+  };
 }
 
 function timingFromPort(
@@ -446,8 +592,10 @@ function analyseProjectCore(
     strokeMm !== null &&
     strokeMm > 0 &&
     rodLengthMm !== null &&
-    rodLengthMm > strokeMm / 2;
+      rodLengthMm > strokeMm / 2;
   const diagnostics: string[] = [];
+  const rotaryInduction = analyseRotaryInduction(project);
+  diagnostics.push(...rotaryInduction.diagnostics);
 
   if (!validGeometry || boreMm === null || strokeMm === null || rodLengthMm === null) {
     return {
@@ -457,6 +605,7 @@ function analyseProjectCore(
       ports: [],
       exhaust: null,
       transfers: [],
+      induction: rotaryInduction.analysis,
       rotary: null,
       timing: {
         globalBlowdownDeg: null,
@@ -523,14 +672,7 @@ function analyseProjectCore(
   const exhaust = ports.find((port) => port.kind === "exhaust") ?? null;
   const transferPorts = ports.filter((port) => port.kind !== "exhaust");
 
-  const advance = parseLocaleNumber(project.induction.advanceBtdcDeg);
-  const delay = parseLocaleNumber(project.induction.delayAtdcDeg);
-  const rotaryResult =
-    project.induction.mode === "rotary" && advance !== null && delay !== null
-      ? rotaryValveTiming(advance, delay)
-      : null;
-  const rotaryTiming = rotaryResult?.value ?? null;
-  if (rotaryResult) diagnostics.push(...diagnosticMessages(rotaryResult));
+  const rotaryTiming = rotaryInduction.timing;
 
   const transfers: TransferAnalysis[] = transferPorts.map((port) => {
     const blowdownDeg = exhaust
@@ -543,9 +685,9 @@ function analyseProjectCore(
       ? circularIntervalOverlap(rotaryTiming.interval, port.interval).value?.degrees ?? null
       : null;
     const margin =
-      rotaryTiming && advance !== null
+      rotaryTiming
         ? intakeTransferMargin({
-            intakeAdvanceBeforeTdcDeg: advance,
+            intakeAdvanceBeforeTdcDeg: rotaryTiming.advanceBeforeTdcDeg,
             transferDurationDeg: port.durationDeg,
           }).value
         : null;
@@ -641,6 +783,9 @@ function analyseProjectCore(
           }).value?.specificTimeAreaSecondsMm2PerCc ?? null
         : null;
     rotary = {
+      source: rotaryInduction.analysis.timingSource,
+      advanceBeforeTdcDeg: rotaryTiming.advanceBeforeTdcDeg,
+      delayAfterTdcDeg: rotaryTiming.delayAfterTdcDeg,
       durationDeg: rotaryTiming.durationDeg,
       durationMs: durationMs(rotaryTiming.durationDeg, rpm),
       interval: rotaryTiming.interval,
@@ -736,6 +881,7 @@ function analyseProjectCore(
     ports,
     exhaust,
     transfers,
+    induction: rotaryInduction.analysis,
     rotary,
     timing: {
       globalBlowdownDeg,

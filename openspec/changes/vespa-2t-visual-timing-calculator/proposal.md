@@ -8,6 +8,7 @@ Vespa two-stroke builders currently have to combine separate calculators, degree
 - Support signed piston-to-deck position and multiple measurement modes without treating inconsistent millimetre and degree values as simultaneous sources of truth.
 - Support a configurable exhaust and any number of primary, secondary, front/boost, auxiliary, or custom transfer-port groups.
 - Support Vespa rotary-inlet opening before TDC and closing after TDC, while treating reed induction as pressure-controlled rather than assigning it a false fixed timing phase.
+- Derive rotary-inlet duration from crank-web cut-away and crankcase opening arc lengths at the entered crankshaft diameter, with one measured timing edge anchoring the result relative to TDC and a direct-angle comparison kept visible.
 - Calculate exhaust-to-transfer blowdown, duration differences, transfer staging, geometric simultaneous-open windows, rotary-inlet-to-transfer overlap or gap, and triple overlap.
 - Express the rotary-inlet relationship to each transfer through a signed inlet-opening versus transfer-closing margin, without inventing a universal intake-to-transfer duration ratio.
 - Calculate bore-derived displacement, mean piston speed, geometric and exhaust-closure trapped compression ratios, target clearance volume, and an auditable clearance-volume breakdown.

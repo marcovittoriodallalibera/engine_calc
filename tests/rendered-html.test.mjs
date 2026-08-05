@@ -37,6 +37,13 @@ test("server-renders the complete calculator shell", async () => {
   assert.match(html, /360° timing map/);
   assert.match(html, /Cylinder lift study/);
   assert.match(html, /Installed cylinder lift/);
+  assert.match(html, /aria-label="Rotary timing source"/);
+  assert.match(html, /Crank &amp; case arcs/);
+  assert.match(html, /Rotary arc timing model/);
+  assert.match(html, /Valve timing-track diameter/);
+  assert.match(html, /Crank cut-away arc/);
+  assert.match(html, /Crankcase opening arc/);
+  assert.match(html, /Arc-to-angle conversion/);
   assert.match(html, /Compression/);
   assert.match(html, /Squish geometry/);
   assert.match(html, /Time-area/);
@@ -52,6 +59,9 @@ test("renders accessible controls and explicit interpretation limits", async () 
   assert.match(html, /aria-labelledby="engine-setup-heading"/);
   assert.match(html, /aria-label="Calculated results"/);
   assert.match(html, /aria-label="Induction mode"/);
+  assert.match(html, /aria-label="Rotary geometry phase anchor"/);
+  assert.match(html, /Measure along the arc, not as a\s+straight chord/i);
+  assert.match(html, /one measured opening or closing edge remains\s+authoritative/i);
   assert.match(html, /aria-label="Adjust cylinder lift in 0.1 millimetre steps"/);
   assert.match(html, /Increase cylinder lift by 0.1 millimetres/);
   assert.match(html, /stroke and\s+rod length stay unchanged/i);
