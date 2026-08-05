@@ -182,6 +182,23 @@ test("deck-referenced depth accounts for the assembled piston position", () => {
   closeTo(result.exhaust?.durationDeg ?? null, 175.079614, 0.00001);
 });
 
+test("an invalid deck token is never coerced to zero", () => {
+  const project = cloneDemonstrationProject();
+  project.geometry.deckPositionMm = "-";
+  project.ports[0] = {
+    ...project.ports[0],
+    sourceMode: "depth-from-deck",
+    sourceValue: "30.7",
+  };
+
+  const result = analyseProject(project);
+
+  assert.equal(result.cylinderLift.effectiveDeckPositionMm, null);
+  assert.equal(result.exhaust, null);
+  assert.ok(result.ports.some((port) => port.id === "primary"));
+  assert.match(result.diagnostics.join(" "), /piston crown position/iu);
+});
+
 test("a 0.1 mm cylinder lift recalculates every port from unchanged crank geometry", () => {
   const project = cloneDemonstrationProject();
   const baseline = analyseProject(project);

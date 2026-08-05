@@ -17,6 +17,25 @@ async function exists(path: string): Promise<boolean> {
 // Packages Sites metadata and migrations after Vite finishes compiling.
 export function sites(): Plugin {
   let root = process.cwd();
+  let packaging: Promise<void> | null = null;
+
+  async function packageSitesMetadata() {
+    const outputDirectory = resolve(root, "dist", ".openai");
+    const hostingConfig = resolve(root, ".openai", "hosting.json");
+    const drizzleSource = resolve(root, "drizzle");
+
+    await rm(outputDirectory, { recursive: true, force: true });
+    await mkdir(outputDirectory, { recursive: true });
+
+    if (await exists(hostingConfig)) {
+      await cp(hostingConfig, resolve(outputDirectory, "hosting.json"));
+    }
+    if (await exists(drizzleSource)) {
+      await cp(drizzleSource, resolve(outputDirectory, "drizzle"), {
+        recursive: true,
+      });
+    }
+  }
 
   return {
     name: "sites",
@@ -24,22 +43,12 @@ export function sites(): Plugin {
     configResolved(config) {
       root = config.root;
     },
-    async closeBundle() {
-      const outputDirectory = resolve(root, "dist", ".openai");
-      const hostingConfig = resolve(root, ".openai", "hosting.json");
-      const drizzleSource = resolve(root, "drizzle");
-
-      await rm(outputDirectory, { recursive: true, force: true });
-      await mkdir(outputDirectory, { recursive: true });
-
-      if (await exists(hostingConfig)) {
-        await cp(hostingConfig, resolve(outputDirectory, "hosting.json"));
-      }
-      if (await exists(drizzleSource)) {
-        await cp(drizzleSource, resolve(outputDirectory, "drizzle"), {
-          recursive: true,
-        });
-      }
+    closeBundle() {
+      // Vinext runs multiple Vite environments and may invoke this hook in
+      // parallel. Share one packaging operation so the hooks cannot delete or
+      // recreate each other's output.
+      packaging ??= packageSitesMetadata();
+      return packaging;
     },
   };
 }

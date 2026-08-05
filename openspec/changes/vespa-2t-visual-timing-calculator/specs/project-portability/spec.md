@@ -5,7 +5,7 @@ Defines private-by-default local continuity and portable, versioned project repr
 ## ADDED Requirements
 
 ### Requirement: Local project continuity
-The system SHALL automatically retain the most recent valid project state in browser-local storage when that storage is available, and SHALL restore it on a later visit without requiring an account.
+The system SHALL automatically retain the most recent valid project state in client-profile local storage in a browser or packaged desktop client when that storage is available, and SHALL restore it on a later visit without requiring an account.
 
 #### Scenario: Resume a local project
 - **WHEN** the user returns in the same browser profile after a valid project was saved locally
@@ -18,6 +18,10 @@ The system SHALL automatically retain the most recent valid project state in bro
 #### Scenario: Invalid stored payload
 - **WHEN** locally stored project data fails schema validation
 - **THEN** the system does not partially apply it and offers a safe empty or demonstration state without crashing
+
+#### Scenario: Resume a packaged desktop project
+- **WHEN** the user returns in the same Windows desktop profile after a valid project was saved locally
+- **THEN** the application restores the same authoritative schema-version-6 inputs and recalculates all derived results without a backend
 
 ### Requirement: Canonical versioned project document
 The system SHALL define a bounded schema-versioned project document containing authoritative source inputs, units, labels, modes, geometry, clearance-volume source, squish readings, rectangular port profiles, comparison configuration, uncertainty, user-selected presentation state, and non-calculating project-report identity required for reproducibility. The current document SHALL use schema version 6. Report identity SHALL include an optional bounded project code, an optional valid ISO project date, and no more than three bounded engine-detail lines. A rotary record SHALL persist its calculation mode, desired opening and closing angles, and area source. Arc-sizing mode SHALL additionally persist effective sealing-track diameter, selected manual-component authority, only that component's measured arc as physical authority, measured common axial overlap width when cylindrical-overlap area is selected, and any explicitly supplied measurement bounds. The project SHALL persist the diagnostic profile identifier `none`, `touring-box`, `sport-box`, `road-expansion`, or `race-expansion`, the selected built-in reference-set version, and the bounded character-graph RPM range. Schema version 6 SHALL additionally persist whether transmission analysis is enabled, manually entered primary driving and driven tooth counts, a four- or five-gear selection, five stable ordered gear records with labels and manually entered tooth pairs, manually entered authoritative wheel rolling circumference, and graph maximum RPM. Primary, gear and overall reductions, upshift RPM, road-speed samples, and graph series SHALL remain derived. The complementary rotary component, total arc, converted component degrees, rotary overlap-area curve, diagnostics, character annotations, print-generation timestamps, other derived mathematical results, and unrecognised properties SHALL NOT become authoritative persisted values; recognised inputs SHALL be reconstructed and all results recalculated.
@@ -172,12 +176,20 @@ The system SHALL create a shareable URL that encodes a validated, versioned proj
 - **WHEN** a link contains an invalid or corrupted project fragment
 - **THEN** the system reports that the shared project cannot be loaded and does not merge partial values into an existing project
 
+#### Scenario: Share from the packaged desktop client
+- **WHEN** the user creates a supported share link in the packaged desktop application
+- **THEN** the link uses the configured canonical HTTPS origin plus the validated project fragment and never exposes the private custom-scheme URL
+
 ### Requirement: Project-content privacy
 The client-only release SHALL NOT transmit project measurements, labels, calculated results, or imported documents to a project backend. Any future action that transmits project content SHALL require a separate capability and an explicit user action.
 
 #### Scenario: Calculate and autosave
 - **WHEN** the user edits, calculates, and stores a project locally
-- **THEN** project content remains within the browser environment
+- **THEN** project content remains within the browser or packaged desktop client environment
+
+#### Scenario: Calculate and autosave in the desktop profile
+- **WHEN** the packaged desktop client calculates and retains a project
+- **THEN** project content remains in the dedicated local desktop profile unless the user explicitly exports or shares it
 
 #### Scenario: Create fragment share link
 - **WHEN** the user creates a supported client-side share link

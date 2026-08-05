@@ -20,6 +20,8 @@ The initial page and document language is British English. User-facing strings w
 - Add a transparent optional transmission calculation from editable Vespa primary and four- or five-gear tooth pairs, measured wheel rolling circumference, and selected maximum RPM without converting theoretical gearing speed into a vehicle-performance claim.
 - Separate deterministic calculations, documented configuration-specific references, and tuning hypotheses in every recommendation surface.
 - Deliver the first release as a static browser application that remains useful without accounts, project APIs, or server-side calculation.
+- Package the same client-only calculator as an offline Windows x64 application without introducing a calculation backend or a second project model.
+- Make desktop privilege boundaries, native execution evidence, artefact provenance, integrity, and signing status explicit.
 - Preserve extension points for non-rectangular measured port profiles, localisation, dynamic simulation, and a future persistence service without designing those features now.
 
 **Non-Goals:**
@@ -32,6 +34,7 @@ The initial page and document language is British English. User-facing strings w
 - Do not add accounts, cloud projects, short-link services, telemetry containing project data, or collaborative editing.
 - Do not make the radial diagram directly draggable in the first release. Equivalent numeric controls are the authoritative edit surface.
 - Do not treat a straight chord, tangential ruler width, or remaining solid crank-web shoulder as the open cut-away arc. Do not infer a second crankcase-track diameter, disconnected windows, rounded edge timing, axial alignment, leakage, crankshaft strength, or balance from the MVP inputs.
+- Do not add automatic updates, machine-wide administration, Windows x86 or ARM64 builds, MSIX distribution, a signing-certificate service, hosted-code fallback, or a general-purpose Electron IPC API in this change.
 
 ## Decisions
 
@@ -408,6 +411,20 @@ Alternatives considered:
 - Plotting road speed on the vertical axis would conflict with the requested comparison and make speed at a selected RPM harder to scan across gears.
 - Calling the highest graph endpoint top speed would imply available power and road-load modelling that the project does not contain.
 
+### 23. Package the shared client inside a hardened Electron host
+
+The desktop renderer reuses the same React presentation path, project validator, and framework-independent calculation kernel as the web application. A separate Electron main process serves only packaged assets through the secure `phase360` custom scheme and a dedicated persistent session. It never loads the production website. The renderer remains sandboxed and has no Node integration, Electron remote access, preload bridge, or general-purpose IPC.
+
+Navigation, renderer-created windows, device and media permissions, and renderer network requests are denied by default. Sanitised clipboard write is the only permission exception and is limited to the packaged origin and main workbench, so the explicit Share action can copy a canonical HTTPS fragment without exposing the private custom-scheme URL. Version-controlled HTTPS methodology references may open in the system browser only through an exact-origin allowlist. JSON and SVG downloads are limited to user-generated Blob URLs, safe filenames, and explicit user gestures.
+
+The desktop renderer uses a stricter local Content Security Policy than the server-rendered web build because it does not need inline bootstrap scripts. Packaged builds harden Electron fuses, validate the embedded archive, and restrict application loading to that archive. These controls do not make the archive a publisher signature and do not replace Authenticode.
+
+### 24. Treat native execution, integrity and publisher identity as separate evidence
+
+Windows packaging runs on a native Windows CI runner from the committed lockfile and produces installer and portable x64 executables. A build manifest and SHA-256 checksums establish source and byte-level traceability. A native smoke record proves that the matching executable starts from the packaged custom origin, retains renderer isolation, executes a known deterministic calculation, preserves local data across reload, and shuts down cleanly.
+
+Checksum integrity, successful execution, and Authenticode publisher identity are separate claims. An unsigned executable can be a verified internal test artefact but is not a trusted public release. Public promotion requires a valid signature from the expected publisher and a retained post-build verification result.
+
 ## Reasoning log
 
 ### 2026-08-05: Keep gearing authoritative at the tooth-pair and measured-wheel level
@@ -453,6 +470,10 @@ The requested true effective inlet area is consequently named geometric rotary o
 - [Static hosting limits future accounts or shared project services] -> Keep persistence behind an interface and add a backend only through a separately specified capability.
 - [SVG export and live rendering can drift] -> Generate both from the same presentation model and regression-test exported fixtures.
 - [Additional dependencies increase supply-chain surface] -> Keep the runtime dependency set small, lock versions, review updates, and run dependency and build checks in CI.
+- [Electron expands the dependency and privilege surface] -> Keep Electron outside the domain core, expose no general-purpose bridge, lock dependencies, audit every release, and apply hardened fuses.
+- [A desktop shell can silently become a remote-code browser] -> Load only packaged application content, deny renderer network access and navigation, and open approved references only in the system browser.
+- [A checksum can be mistaken for publisher trust] -> Report hash integrity and Authenticode status separately and block public promotion when signature verification is not valid.
+- [A cross-built executable can be mistaken for Windows verification] -> Require a native Windows smoke record tied to the final artefact hash.
 
 ## Migration Plan
 
@@ -465,7 +486,8 @@ The requested true effective inlet area is consequently named geometric rotary o
 7. Introduce schema version 4, migrate supported version 1, 2, and 3 projects through the explicit rotary rules in Decision 17, retain timing-only analysis, and replace dual physical arc inputs with the desired-timing complement solver.
 8. Introduce schema version 5 with diagnostic profile and reference version, rotary area source and common width, stated uncertainties, and character-graph RPM range; migrate supported version 1, 2, 3, and 4 projects to profile `none` without invented bounds and keep every curve, diagnostic, and graph series derived.
 9. Introduce schema version 6 with optional manually entered authoritative transmission inputs; migrate supported version 1, 2, 3, 4, and 5 projects with transmission disabled and no invented hardware, implement the reduction and road-speed kernel, and generate the speed-horizontal and RPM-vertical graph, semantic table, and print section from one result.
-10. Deploy an immutable preview build, run mathematical, browser, accessibility, migration, authority-switch, manual measurement, transmission, print, diagnostic-boundary, and no-performance-claim cross-checks, then promote the same verified artefact.
+10. Build the offline Windows x64 installer and portable executable on a native Windows runner from the lockfile, verify hardened fuses and the final packaged origin, run the native smoke suite, and retain checksums, build manifest, exact signing status, and matching source commit.
+11. Deploy an immutable preview build, run mathematical, browser, accessibility, migration, authority-switch, manual measurement, transmission, print, diagnostic-boundary, and no-performance-claim cross-checks, then promote the same verified artefact. Promote a Windows build publicly only after Authenticode validates the expected publisher.
 
 Rollback consists of redeploying the previous static artefact. The initial release has no server data migration. If a later application build cannot read a stored project schema, it must leave the stored payload intact and offer export or a clear version error rather than overwriting it.
 
@@ -476,3 +498,4 @@ Rollback consists of redeploying the previous static artefact. The initial relea
 - Confirm through physical measurement trials whether a later schema should support a remaining-solid-shoulder source, straight-chord conversion, or an independently measured crankcase-track diameter. The MVP accepts only one selected open circumferential component arc and the stated shared-diameter assumption.
 - Validate the first built-in profile reference catalogue against traceable published configurations and, separately, against physical road, pressure, flow-bench, or dyno datasets before any future calibrated performance model is proposed. This does not block the MVP's explicitly heuristic profile comparisons.
 - Cross-check manually entered tooth pairs and measured wheel circumference against the exact installed components used in physical acceptance tests.
+- Select the future Authenticode certificate and expected publisher identity before public Windows distribution. This does not block an explicitly unsigned internal verification build.

@@ -177,3 +177,14 @@
 - [x] 12.5 Add non-blocking progression diagnostics and repeat the geometric-only boundary that road-speed results exclude tyre growth or slip, clutch slip, drivetrain loss, load, drag, gradient, power, acceleration, and the ability to reach selected RPM
 - [x] 12.6 Include authoritative transmission inputs, calculated ratios, speed-versus-RPM graph, equivalent table, units, and vehicle-dynamics boundary in the A4 print report while omitting interactive-only controls
 - [ ] 12.7 Add analytic, round-trip, invalid-boundary, manual-entry, four- and five-gear, progression-warning, semantic-equivalence, server-render, responsive, accessibility, print, migration, and no-top-speed-claim tests
+
+## 13. Windows Desktop Distribution
+
+- [x] 13.1 Build a desktop renderer from the shared calculation, project, presentation, accessibility, print, and export paths without a hosted-code dependency or project-schema fork
+- [x] 13.2 Implement the hardened Electron host with a bounded packaged-content scheme, sandboxing, context isolation, no Node integration, denied renderer network access and navigation, an external-reference allowlist, strict desktop CSP, and hardened fuses
+- [x] 13.3 Define explicit desktop behaviour for local persistence, clear-data, JSON and SVG export, print, and a canonical HTTPS share link without transmitting project content
+- [x] 13.4 Add a native Windows lockfile build that produces x64 installer and portable executables, SHA-256 checksums, and a source-linked build manifest
+- [x] 13.5 Add automated desktop security tests for Node isolation, protocol traversal, CSP, permissions, navigation, external links, archive loading, fuse state, deterministic calculation, and local persistence
+- [ ] 13.6 Run the native Windows smoke test against the portable and installed application, including offline local loading, a known calculation, persistence, clean shutdown, installation, and uninstall
+- [ ] 13.7 Record exact artefact hashes, Windows runner, architecture, source commit, dependency-audit result, smoke evidence, and signing status
+- [x] 13.8 Document unsigned SmartScreen behaviour and require verified Authenticode publisher identity before any public Windows promotion

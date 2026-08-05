@@ -1,0 +1,80 @@
+name: Windows desktop
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-verify:
+    name: Build and verify Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      CI: "true"
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.1
+          architecture: x64
+          package-manager-cache: false
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      - name: Run complete test suite
+        run: npm test
+
+      - name: Ensure dependency manifests were not rewritten
+        run: git diff --exit-code -- package.json package-lock.json
+
+      - name: Build installer and portable executable
+        run: npm run desktop:dist:win
+
+      - name: Verify packages natively
+        shell: pwsh
+        run: >-
+          pwsh -NoProfile -File scripts/verify-windows-package.ps1
+          -DistDir desktop-dist
+          -ExpectedSignature NotSigned
+
+      - name: Upload verified deliverables
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: phase-360-windows-x64-${{ github.sha }}
+          path: |
+            desktop-dist/Phase-360-Setup-*-x64.exe
+            desktop-dist/Phase-360-Portable-*-x64.exe
+            desktop-dist/SHA256SUMS.txt
+            desktop-dist/windows-verification.json
+            desktop-dist/electron-fuses.json
+            desktop-dist/smoke-*.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Record artifact digest
+        shell: pwsh
+        run: |
+          "GitHub artifact SHA-256: ${{ steps.upload.outputs.artifact-digest }}" |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append

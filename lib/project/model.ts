@@ -485,14 +485,29 @@ export function validateProjectDocument(value: unknown): ProjectValidation {
   if (!geometryFields.every((key) => isText(geometry[key], 32))) {
     return { ok: false, message: "Engine geometry contains an invalid value." };
   }
+  if (parseLocaleNumber(geometry.deckPositionMm as string) === null) {
+    return {
+      ok: false,
+      message: "Piston crown position must be a valid signed number.",
+    };
+  }
   if (!Array.isArray(value.ports) || value.ports.length < 1 || value.ports.length > 12) {
     return { ok: false, message: "The project must contain between 1 and 12 ports." };
   }
+  const portIds = new Set<string>();
   const validPorts = value.ports.every((item) => {
     if (!isRecord(item)) return false;
+    if (
+      !isText(item.id, 40) ||
+      item.id.trim() === "" ||
+      portIds.has(item.id) ||
+      !isText(item.label, 60) ||
+      item.label.trim() === ""
+    ) {
+      return false;
+    }
+    portIds.add(item.id);
     return (
-      isText(item.id, 40) &&
-      isText(item.label, 60) &&
       portKinds.has(item.kind as PortKind) &&
       typeof item.enabled === "boolean" &&
       sourceModes.has(item.sourceMode as PortSourceMode) &&

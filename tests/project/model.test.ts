@@ -61,6 +61,28 @@ test("serialises and parses a complete current-schema project", () => {
   if (parsed.ok) assert.deepEqual(parsed.project, project);
 });
 
+test("rejects invalid deck tokens and ambiguous port identities", () => {
+  const invalidDeck = cloneDemonstrationProject();
+  invalidDeck.geometry.deckPositionMm = "-";
+  const deckValidation = validateProjectDocument(invalidDeck);
+  assert.equal(deckValidation.ok, false);
+  if (!deckValidation.ok) {
+    assert.match(deckValidation.message, /piston crown position/iu);
+  }
+
+  const duplicatePort = cloneDemonstrationProject();
+  duplicatePort.ports[1].id = duplicatePort.ports[0].id;
+  assert.equal(validateProjectDocument(duplicatePort).ok, false);
+
+  const blankIdentity = cloneDemonstrationProject();
+  blankIdentity.ports[1].id = "  ";
+  assert.equal(validateProjectDocument(blankIdentity).ok, false);
+
+  const blankLabel = cloneDemonstrationProject();
+  blankLabel.ports[1].label = "";
+  assert.equal(validateProjectDocument(blankLabel).ok, false);
+});
+
 test("normalises schema version 2 projects with empty report metadata", () => {
   const legacy = legacyProject(2);
 

@@ -247,6 +247,16 @@ test("does not save, export or share an invalid active rotary source", () => {
   assert.equal(storage.values.has(PROJECT_STORAGE_KEY), false);
 });
 
+test("does not persist an intermediate deck-position token", () => {
+  const project = cloneDemonstrationProject();
+  project.geometry.deckPositionMm = "-";
+  const storage = new FakeStorage();
+
+  assert.equal(saveProjectToStorage(project, storage).ok, false);
+  assert.equal(prepareProjectDownload(project).ok, false);
+  assert.equal(storage.values.has(PROJECT_STORAGE_KEY), false);
+});
+
 test("imports a bounded project file atomically", async () => {
   const project = cloneDemonstrationProject();
   const json = serialiseProject(project);
@@ -318,6 +328,7 @@ test("declines an encoded project beyond the share fragment limit", () => {
   for (const key of Object.keys(project.geometry) as Array<keyof typeof project.geometry>) {
     project.geometry[key] = "漢".repeat(32);
   }
+  project.geometry.deckPositionMm = "0";
   project.ports = Array.from({ length: 12 }, (_, index) => ({
     ...project.ports[0],
     id: `${index}${"漢".repeat(39)}`.slice(0, 40),

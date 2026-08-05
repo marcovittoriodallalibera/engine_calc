@@ -26,7 +26,6 @@ import {
 } from "@/lib/presentation/analyse-project";
 import {
   MAX_SHARE_FRAGMENT_LENGTH,
-  LEGACY_PROJECT_STORAGE_KEYS,
   PROJECT_STORAGE_KEY,
   changeRotaryMeasuredArc,
   cloneDemonstrationProject,
@@ -43,6 +42,10 @@ import {
   type PortSourceMode,
   type TransmissionGearCount,
 } from "@/lib/project/model";
+import {
+  clearProjectFromStorage,
+  loadProjectFromStorage,
+} from "@/lib/project/browser";
 
 const sourceOptions: Array<{ value: PortSourceMode; label: string }> = [
   { value: "travel-from-tdc", label: "Roof travel from TDC" },
@@ -203,6 +206,7 @@ interface NumberFieldProps {
   maximum?: number;
   exclusiveMinimum?: boolean;
   integer?: boolean;
+  required?: boolean;
   validationMessage?: string | null;
 }
 
@@ -219,12 +223,15 @@ function NumberField({
   maximum,
   exclusiveMinimum,
   integer,
+  required,
   validationMessage,
 }: NumberFieldProps) {
   const numericValue = parseLocaleNumber(value);
   let errorMessage: string | null = null;
 
-  if (value.trim() !== "") {
+  if (value.trim() === "" && required) {
+    errorMessage = "Enter a value.";
+  } else if (value.trim() !== "") {
     if (numericValue === null) {
       errorMessage = "Enter a valid number.";
     } else if (integer && !Number.isInteger(numericValue)) {
@@ -1745,16 +1752,25 @@ function DiagnosticLevels({ analysis }: { analysis: EngineProjectAnalysis }) {
   );
 }
 
-export function EngineWorkbench() {
+export interface EngineWorkbenchProps {
+  shareBaseUrl?: string;
+  updateLocationOnShare?: boolean;
+}
+
+export function EngineWorkbench({
+  shareBaseUrl,
+  updateLocationOnShare = true,
+}: EngineWorkbenchProps = {}) {
   const [project, setProject] = useState<EngineProjectDraft>(() =>
     cloneDemonstrationProject(),
   );
   const [hydrated, setHydrated] = useState(false);
+  const [autosaveBlocked, setAutosaveBlocked] = useState(false);
   const [actionStatus, setActionStatus] = useState(
     "Illustrative values loaded. Edit any field to begin.",
   );
   const [localSaveState, setLocalSaveState] = useState<
-    "checking" | "saved" | "invalid" | "unavailable"
+    "checking" | "saved" | "invalid" | "paused" | "unavailable"
   >("checking");
   const [selectedArc, setSelectedArc] = useState<string | null>(null);
   const [baseline, setBaseline] = useState<EngineProjectAnalysis | null>(null);
@@ -1845,6 +1861,8 @@ export function EngineWorkbench() {
       ? "Saved locally"
       : localSaveState === "invalid"
         ? "Not saved: invalid inputs"
+        : localSaveState === "paused"
+          ? "Local saving paused"
         : localSaveState === "unavailable"
           ? "Local saving unavailable"
           : "Checking local save";
@@ -1863,25 +1881,18 @@ export function EngineWorkbench() {
         }
       }
       if (!restored) {
-        try {
-          let stored = window.localStorage.getItem(PROJECT_STORAGE_KEY);
-          if (stored === null) {
-            for (const legacyKey of LEGACY_PROJECT_STORAGE_KEYS) {
-              stored = window.localStorage.getItem(legacyKey);
-              if (stored !== null) break;
-            }
-          }
-          if (stored) {
-            const parsed = parseProjectJson(stored);
-            if (parsed.ok) {
-              setProject(parsed.project);
-              setActionStatus("Last valid local project restored.");
-            } else {
-              setActionStatus("Stored project was invalid. Illustrative values were kept.");
-            }
-          }
-        } catch {
-          setActionStatus("Local recovery is unavailable. Calculation still works in this session.");
+        const stored = loadProjectFromStorage(window.localStorage);
+        if (stored.ok && stored.project) {
+          setProject(stored.project);
+          setActionStatus("Last valid local project restored.");
+        } else if (!stored.ok && stored.status === "invalid") {
+          setAutosaveBlocked(true);
+          setLocalSaveState("paused");
+          setActionStatus(
+            "Stored project was invalid and was preserved. Local saving is paused until you edit, import, reset or clear it.",
+          );
+        } else if (!stored.ok) {
+          setActionStatus(stored.message);
         }
       }
       setHydrated(true);
@@ -1899,6 +1910,9 @@ export function EngineWorkbench() {
 
   useEffect(() => {
     if (!hydrated) return;
+    if (autosaveBlocked) {
+      return;
+    }
     let nextSaveState: typeof localSaveState;
     let saveFailureMessage: string | null = null;
 
@@ -1929,11 +1943,13 @@ export function EngineWorkbench() {
   }, [
     analysis.cylinderLift.valid,
     analysis.validGeometry,
+    autosaveBlocked,
     hydrated,
     portableProject,
   ]);
 
   function noteEdit() {
+    setAutosaveBlocked(false);
     setActionStatus(
       "Changes calculated in real time. Local save follows the latest valid project inputs.",
     );
@@ -2143,9 +2159,30 @@ export function EngineWorkbench() {
   function resetProject() {
     if (!window.confirm("Reset every field to the illustrative project?")) return;
     setProject(cloneDemonstrationProject());
+    setAutosaveBlocked(false);
     setBaseline(null);
     setActionStatus("Illustrative project restored.");
     window.location.hash = "";
+  }
+
+  function clearLocalData() {
+    if (
+      !window.confirm(
+        "Clear locally saved project data from this browser? The current fields will remain open and automatic local saving will pause until the next edit.",
+      )
+    ) {
+      return;
+    }
+    const cleared = clearProjectFromStorage(window.localStorage);
+    if (!cleared.ok) {
+      setActionStatus(cleared.message);
+      return;
+    }
+    setAutosaveBlocked(true);
+    setLocalSaveState("paused");
+    setActionStatus(
+      "Local project data cleared. Current fields remain open; local saving resumes after the next edit.",
+    );
   }
 
   function exportProject() {
@@ -2200,14 +2237,20 @@ export function EngineWorkbench() {
       setActionStatus("This project is too large for a reliable link. Export JSON instead.");
       return;
     }
-    const url = new URL(window.location.href);
+    const url = new URL(shareBaseUrl ?? window.location.href);
     url.hash = `p=${encoded}`;
-    window.history.replaceState(null, "", url);
+    if (updateLocationOnShare) {
+      window.history.replaceState(null, "", url);
+    }
     try {
       await navigator.clipboard.writeText(url.toString());
       setActionStatus("Private fragment link copied. Project data was not sent to a server.");
     } catch {
-      setActionStatus("Share link created in the address bar. Copy it from there.");
+      setActionStatus(
+        updateLocationOnShare
+          ? "Share link created in the address bar. Copy it from there."
+          : "The web share link could not be copied. Export JSON instead.",
+      );
     }
   }
 
@@ -2232,6 +2275,7 @@ export function EngineWorkbench() {
       return;
     }
     setProject(parsed.project);
+    setAutosaveBlocked(false);
     setBaseline(null);
     setActionStatus("Project imported and all results recalculated.");
   }
@@ -2496,6 +2540,9 @@ export function EngineWorkbench() {
               </button>
               <button type="button" onClick={exportSvg}>
                 Export diagram
+              </button>
+              <button type="button" onClick={clearLocalData}>
+                Clear local data
               </button>
             </div>
           </details>
@@ -3447,6 +3494,7 @@ export function EngineWorkbench() {
                         minimum={1}
                         maximum={200}
                         integer
+                        required={project.transmission.enabled}
                         onChange={(value) =>
                           updateTransmission("primaryDrivePinionTeeth", value)
                         }
@@ -3459,6 +3507,7 @@ export function EngineWorkbench() {
                         minimum={1}
                         maximum={200}
                         integer
+                        required={project.transmission.enabled}
                         onChange={(value) =>
                           updateTransmission("primaryDrivenGearTeeth", value)
                         }
@@ -3512,6 +3561,7 @@ export function EngineWorkbench() {
                                 minimum={1}
                                 maximum={200}
                                 integer
+                                required={project.transmission.enabled}
                                 onChange={(value) =>
                                   updateTransmissionGear(index, {
                                     clusterPinionTeeth: value,
@@ -3527,6 +3577,7 @@ export function EngineWorkbench() {
                                 minimum={1}
                                 maximum={200}
                                 integer
+                                required={project.transmission.enabled}
                                 onChange={(value) =>
                                   updateTransmissionGear(index, {
                                     drivenGearTeeth: value,
@@ -3554,6 +3605,7 @@ export function EngineWorkbench() {
                         unit="mm"
                         minimum={500}
                         maximum={5000}
+                        required={project.transmission.enabled}
                         help="Measure one loaded wheel revolution on the ground. Nominal tyre sizes can differ."
                         onChange={(value) =>
                           updateTransmission(
@@ -3570,6 +3622,7 @@ export function EngineWorkbench() {
                         minimum={500}
                         maximum={20000}
                         integer
+                        required={project.transmission.enabled}
                         onChange={(value) =>
                           updateTransmission("maximumRpm", value)
                         }

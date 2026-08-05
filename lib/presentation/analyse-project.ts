@@ -296,7 +296,7 @@ export interface CylinderLiftAnalysis {
   appliedThicknessMm: number;
   maximumThicknessMm: number | null;
   valid: boolean;
-  effectiveDeckPositionMm: number;
+  effectiveDeckPositionMm: number | null;
   clearanceVolumeDeltaCc: number | null;
   squishGapDeltaMm: number;
   globalBlowdownDeltaDeg: number | null;
@@ -809,7 +809,7 @@ function timingFromPort(
   port: PortDraft,
   strokeMm: number,
   rodLengthMm: number,
-  crownBelowDeckAtTdcMm: number,
+  crownBelowDeckAtTdcMm: number | null,
 ): {
   sourceValue: number;
   travelFromTdcMm: number;
@@ -827,6 +827,7 @@ function timingFromPort(
   } else if (port.sourceMode === "height-above-bdc") {
     travelFromTdcMm = strokeMm - sourceValue;
   } else if (port.sourceMode === "depth-from-deck") {
+    if (crownBelowDeckAtTdcMm === null) return null;
     travelFromTdcMm = sourceValue - crownBelowDeckAtTdcMm;
   } else if (port.sourceMode === "opening-angle") {
     const result = symmetricPortTimingFromOpening(sourceValue);
@@ -876,7 +877,7 @@ function analysePort(
   port: PortDraft,
   strokeMm: number,
   rodLengthMm: number,
-  crownBelowDeckAtTdcMm: number,
+  crownBelowDeckAtTdcMm: number | null,
   cylinderLiftMm: number,
   rpm: number | null,
   displacementCc: number | null,
@@ -1111,8 +1112,9 @@ function analyseProjectCore(
   const strokeMm = parseLocaleNumber(project.geometry.strokeMm);
   const rodLengthMm = parseLocaleNumber(project.geometry.rodLengthMm);
   const rpmValue = parseLocaleNumber(project.geometry.rpm);
-  const crownBelowDeckAtTdcMm =
-    parseLocaleNumber(project.geometry.deckPositionMm) ?? 0;
+  const crownBelowDeckAtTdcMm = parseLocaleNumber(
+    project.geometry.deckPositionMm,
+  );
   const rpm = rpmValue !== null && rpmValue > 0 ? rpmValue : null;
   const validGeometry =
     boreMm !== null &&
@@ -2081,7 +2083,7 @@ export function analyseProject(project: EngineProjectDraft): EngineProjectAnalys
     appliedThicknessMm > 0
       ? analyseProjectCore(project, appliedThicknessMm)
       : baseline;
-  const deckPositionMm = parseLocaleNumber(project.geometry.deckPositionMm) ?? 0;
+  const deckPositionMm = parseLocaleNumber(project.geometry.deckPositionMm);
   const boreMm = parseLocaleNumber(project.geometry.boreMm);
   const clearanceVolumeDeltaCc =
     boreMm !== null && boreMm > 0
@@ -2106,6 +2108,12 @@ export function analyseProject(project: EngineProjectDraft): EngineProjectAnalys
   });
   const extraDiagnostics: string[] = [];
   const transmission = analyseTransmission(project);
+
+  if (deckPositionMm === null) {
+    extraDiagnostics.push(
+      "Piston crown position at TDC must be a valid signed number; deck-referenced results are unavailable.",
+    );
+  }
 
   if (!hasValidNumber) {
     extraDiagnostics.push("Cylinder lift must be a non-negative number.");
@@ -2132,7 +2140,8 @@ export function analyseProject(project: EngineProjectDraft): EngineProjectAnalys
       appliedThicknessMm,
       maximumThicknessMm,
       valid,
-      effectiveDeckPositionMm: deckPositionMm + appliedThicknessMm,
+      effectiveDeckPositionMm:
+        deckPositionMm === null ? null : deckPositionMm + appliedThicknessMm,
       clearanceVolumeDeltaCc,
       squishGapDeltaMm: appliedThicknessMm,
       globalBlowdownDeltaDeg: metricDelta(

@@ -29,7 +29,14 @@ test("server-renders the complete calculator shell", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   assert.equal(response.headers.get("x-content-type-options"), "nosniff");
   assert.equal(response.headers.get("x-frame-options"), "DENY");
+  assert.equal(response.headers.get("cross-origin-opener-policy"), "same-origin");
+  assert.equal(response.headers.get("cross-origin-resource-policy"), "same-origin");
+  assert.match(
+    response.headers.get("strict-transport-security") ?? "",
+    /max-age=63072000/,
+  );
   assert.match(response.headers.get("content-security-policy") ?? "", /object-src 'none'/);
+  assert.match(response.headers.get("content-security-policy") ?? "", /form-action 'self'/);
 
   const html = await response.text();
   assert.match(html, /<title>Two-stroke timing workbench \| Phase 360<\/title>/i);
@@ -41,6 +48,7 @@ test("server-renders the complete calculator shell", async () => {
   assert.match(html, /Project code/);
   assert.match(html, /Project date/);
   assert.match(html, /Engine details/);
+  assert.match(html, /Clear local data/);
   assert.match(html, /Two-stroke timing report/);
   assert.match(html, /Authoritative project inputs/);
   assert.match(html, /Port measurements/);

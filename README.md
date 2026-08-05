@@ -52,8 +52,10 @@ The development preview is normally available at `http://localhost:3000`.
 npm run lint
 npm run typecheck
 npm run test:unit
+npm run test:desktop
 npm run build
 npm run test:render
+npm run desktop:build
 ```
 
 `npm test` runs the complete sequence. The mathematical suite includes the Polini 51 mm stroke, 97 mm rod and 33-degree reference, which corresponds to approximately 5.1 mm piston travel.
@@ -65,6 +67,8 @@ npm run test:render
 - `lib/presentation`: one project-to-results analysis path used by the interface
 - `components`: realtime workbench and accessible SVG timing dial
 - `app`: Vinext application shell, metadata and responsive print styling
+- `desktop`: offline Vite renderer, hardened Electron host, and packaged Windows application boundary
+- `scripts`: Electron fuse and native Windows package verification
 - `tests`: mathematical, portability and rendered-output acceptance tests
 - `openspec`: proposal, design, capability specifications and implementation tasks
 
@@ -74,15 +78,19 @@ The domain kernel has no React, storage or browser dependencies. Derived results
 
 The latest valid project is saved to `localStorage` when available. JSON import is bounded and validated before atomic replacement. Share links encode project data in the URL fragment, which is not sent to the hosting server by normal browser requests. SVG and JSON exports are generated locally.
 
+The Project menu includes a confirmed `Clear local data` action. If a stored project is unreadable, automatic saving pauses and preserves that payload until the user explicitly edits, imports, resets or clears the local state.
+
 Future network transfer of project content requires a separate capability and explicit user action.
 
 ## Documentation
 
 - [Calculation methodology](docs/methodology.md)
 - [Project format and portability](docs/project-format.md)
+- [Security audit](docs/security-audit.md)
+- [Windows desktop distribution](docs/windows-desktop.md)
 - [OpenSpec change](openspec/changes/vespa-2t-visual-timing-calculator/proposal.md)
 
-## Deployment
+## Web deployment
 
 The production build is a Cloudflare Worker-compatible Vinext artefact. Hosting bindings are intentionally empty because the MVP has no database or object storage.
 
@@ -91,3 +99,17 @@ npm run build
 ```
 
 Deployment configuration lives in `.openai/hosting.json`.
+
+## Windows desktop
+
+The desktop application reuses the same schema-version-6 project model, calculation kernel and React workbench. It is packaged locally, does not load the hosted application, and does not require a network connection for calculation, persistence, JSON or SVG export, or print. Approved methodology references open separately in the system browser.
+
+```bash
+npm run desktop:build
+npm run desktop:smoke
+npm run desktop:dist:win
+```
+
+`desktop:smoke` runs the local Electron runtime and needs a graphical host. The release workflow builds natively on Windows x64, tests the unpacked application, portable executable and installed application, verifies Electron fuses and Authenticode status, and emits SHA-256 checksums plus a machine-readable verification record.
+
+The initial Windows package is intentionally unsigned. It is suitable for internal verification, may trigger Microsoft SmartScreen, and must not be presented as a trusted public release. Public promotion requires a valid Authenticode signature from the expected publisher. See [Windows desktop distribution](docs/windows-desktop.md) for the exact boundary and verification procedure.

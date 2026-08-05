@@ -166,6 +166,10 @@ a {
   background: var(--gold);
 }
 
+.privacy-state.is-paused > span {
+  background: var(--gold);
+}
+
 .privacy-state.is-invalid > span,
 .privacy-state.is-unavailable > span {
   background: #ef7148;

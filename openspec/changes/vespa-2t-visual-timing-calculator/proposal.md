@@ -28,6 +28,8 @@ Vespa two-stroke builders currently have to combine separate calculators, degree
 - Add a real-time transmission graph with road speed on the horizontal axis and engine RPM on the vertical axis, one distinctly labelled line per gear, an equivalent numeric table, and complete print-report coverage. Every transmission tooth count and wheel circumference is entered manually.
 - Add deterministic validation, measurement uncertainty, and warnings that distinguish geometric calculations from airflow, performance, structural-safety, and tuning predictions.
 - Add local project persistence, versioned JSON import/export, shareable client-side links, SVG export, and an A4 report with editable project code, date, and three-line engine specification.
+- Add an offline Windows x64 desktop distribution that packages the same calculation and presentation code locally inside a hardened Electron host. The desktop application does not load hosted application code, transmit project content, or require a backend.
+- Produce a native Windows installer and portable executable from the lockfile, with SHA-256 checksums, build provenance, native smoke-test evidence, and explicit Authenticode signing status.
 - Keep the first release client-only. Accounts, cloud projects, CFD, dynamic pressure or combustion simulation, absolute torque or power prediction, synthetic dyno curves, reachable top-speed prediction, acceleration or road-load simulation, exhaust-pipe design, universal tuning targets, chord-to-arc conversion, independent crankcase-track diameter, disconnected rotary windows, edge-radius modelling, and crankshaft strength or balance assessment are outside this change.
 
 ## Capabilities
@@ -40,6 +42,7 @@ Vespa two-stroke builders currently have to combine separate calculators, degree
 - `transmission-analysis`: Manually configurable Vespa primary and four- or five-speed gearbox geometry, wheel-circumference-based theoretical road speed, upshift RPM drop, graph data, validation, and explicit vehicle-dynamics exclusions.
 - `visual-workbench`: Real-time editing, the accessible 360-degree timing diagram, numeric results, diagnostic profiles, qualitative character visualisation, responsive interaction, and comparison-ready presentation.
 - `project-portability`: Local persistence, schema-versioned import/export, shareable links, SVG export, and printable output.
+- `desktop-distribution`: Offline Windows packaging, hardened desktop runtime boundaries, native-build evidence, artefact integrity, smoke testing, signing status, and supported-platform limits.
 
 ### Modified Capabilities
 
@@ -52,3 +55,5 @@ None.
 - Upgrades the portable project model to schema version 6. Version 2 introduced dual rotary source authority, version 3 added bounded report identity, and version 4 kept desired timing authoritative while replacing two editable physical arcs with one explicit manual component and one calculated complement. Version 5 adds the selected versioned diagnostic profile, rotary-area source, bounded physical uncertainties, and character-graph RPM range. Version 6 adds optional authoritative transmission inputs while keeping ratios, shift results, road-speed samples, and graph series derived. Supported version 1, 2, 3, 4, and 5 projects migrate deterministically with transmission analysis disabled and without fabricated tooth counts, wheel measurements, or transmission claims.
 - Introduces client-side validation, SVG rendering, local storage, URL-state handling, and automated mathematical and server-render checks. Interactive component, accessibility, visual-regression, and complete browser coverage remain explicit hardening tasks.
 - Uses private client-only hosting for the current preview. Continuous integration and the complete deployment acceptance suite remain open, and no runtime calculation backend or user-data service is required.
+- Adds Electron only as a packaging and host boundary. The framework-independent calculation kernel, schema-version-6 project model, and authoritative data model remain unchanged.
+- Adds a native Windows build workflow and executable artefacts. An unsigned build is an internal or test distribution and is not a trusted public release.

@@ -1,0 +1,9 @@
+{
+  "name": "phase-360-desktop",
+  "version": "0.1.0",
+  "description": "Offline Phase 360 two-stroke timing workbench for Windows x64.",
+  "author": "Marco Vittorio Dalla Libera",
+  "private": true,
+  "type": "module",
+  "main": "main.mjs"
+}

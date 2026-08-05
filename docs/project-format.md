@@ -67,6 +67,7 @@ Imported documents are treated as untrusted data. Before replacement, the comple
 - supported schema version
 - bounded byte size
 - bounded project name and port labels
+- non-empty unique port identifiers and a valid signed piston crown position
 - bounded project code and engine details, a real ISO project date, and a maximum of three detail lines
 - a bounded number of port groups
 - known categories, source modes and induction modes
@@ -82,13 +83,17 @@ Malformed or unsupported data leaves the current project unchanged.
 
 ## Local continuity
 
-The latest valid project is written to the browser's local storage. Storage failure is non-blocking: calculation and explicit export continue to work for the current session.
+The latest valid project is written to the client profile's local storage. On the web this is the browser profile; in the packaged application it is the dedicated local Electron profile. Storage failure is non-blocking: calculation and explicit export continue to work for the current session.
+
+If stored data cannot be validated, it is left untouched and automatic saving pauses until an explicit edit, import, reset or clear action. The Project menu can clear current and legacy local project keys after confirmation.
 
 At startup, a valid project encoded in the URL fragment takes precedence over a locally stored project. The fragment is validated before use.
 
 ## Share links
 
 Share links use URL-safe base64 encoded JSON after `#p=`. Browser URL fragments are not included in normal HTTP requests, so opening or copying such a link does not create a server-side project record.
+
+The desktop application uses the configured canonical HTTPS application origin for copied links. It never exposes the private `phase360` scheme. Web and desktop clients share schema version 6 and the same migration rules; the desktop profile directory itself is neither a portable project format nor a data-encryption guarantee.
 
 An encoded-length cap avoids creating unreliable URLs. JSON export is the fallback for larger projects.
 
@@ -106,6 +111,8 @@ Every schema 1 to 5 project migrates to schema 6 with transmission analysis disa
 
 ## Privacy
 
-The MVP has no accounts, project API, cloud database or telemetry containing project measurements. Import, calculation, local save, fragment creation, JSON export and SVG export occur in the browser.
+The MVP has no accounts, project API, cloud database or telemetry containing project measurements. Import, calculation, local save, fragment creation, JSON export and SVG export occur in the browser or packaged desktop client.
+
+Desktop local storage remains readable to software with access to the Windows user profile. The enabled Electron cookie-encryption fuse does not encrypt local storage. Use JSON export for deliberate portability and Clear local data to remove retained project keys from the active profile.
 
 Any future feature that transfers project content over a network requires a separately specified capability and explicit user action.
