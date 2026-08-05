@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import type { CSSProperties, KeyboardEvent } from "react";
+import type { CSSProperties } from "react";
 
 export interface TimingPhaseArc {
   id: string;
@@ -84,12 +84,16 @@ function clockwiseSpan(start: number, end: number): number {
   return normaliseAngle(rawSpan);
 }
 
+function roundCoordinate(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
 function pointAtAngle(angle: number, radius: number): DialPoint {
   const radians = (normaliseAngle(angle) * Math.PI) / 180;
 
   return {
-    x: CENTRE + radius * Math.sin(radians),
-    y: CENTRE - radius * Math.cos(radians),
+    x: roundCoordinate(CENTRE + radius * Math.sin(radians)),
+    y: roundCoordinate(CENTRE - radius * Math.cos(radians)),
   };
 }
 
@@ -136,18 +140,6 @@ function phaseDescription(phase: PreparedPhase): string {
   return `${phase.label}, ${phase.category}. ${interval}. Duration ${formatSpan(phase.span)}.`;
 }
 
-function activateWithKeyboard(
-  event: KeyboardEvent<SVGElement>,
-  action: (() => void) | undefined,
-): void {
-  if (!action || (event.key !== "Enter" && event.key !== " ")) {
-    return;
-  }
-
-  event.preventDefault();
-  action();
-}
-
 export function TimingDial({
   id = "phase360-diagram",
   phases = [],
@@ -161,7 +153,6 @@ export function TimingDial({
   const generatedId = useId().replace(/:/g, "");
   const titleId = `timing-dial-title-${generatedId}`;
   const descriptionId = `timing-dial-description-${generatedId}`;
-  const glowId = `timing-dial-glow-${generatedId}`;
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
 
@@ -296,16 +287,110 @@ export function TimingDial({
   const containerStyle: CSSProperties = {
     width: "100%",
     margin: 0,
-    padding: "clamp(0.75rem, 2.5vw, 1.5rem)",
+    padding: 0,
     overflow: "hidden",
-    border: "1px solid rgba(148, 163, 184, 0.18)",
-    borderRadius: "1.5rem",
-    background: "#151812",
-    boxShadow:
-      "0 1.5rem 4rem rgba(2, 6, 23, 0.24), inset 0 1px rgba(255, 255, 255, 0.05)",
-    color: "#f8fafc",
+    border: 0,
+    background: "transparent",
+    color: "#f5f4ee",
     ...style,
   };
+  const primaryLegendPhases = prepared.phases.filter(
+    (phase) => phase.category.toLowerCase() !== "analysis",
+  );
+  const analysisLegendPhases = prepared.phases.filter(
+    (phase) => phase.category.toLowerCase() === "analysis",
+  );
+
+  function renderPhaseLegendRow(phase: PreparedPhase) {
+    const isSelected = selectedId === phase.id;
+    const isActive =
+      isSelected || hoveredKey === phase.key || focusedKey === phase.key;
+    const sharedStyle = {
+      "--phase-colour": phase.colour,
+    } as CSSProperties;
+    const content = (
+      <>
+        <span className="timing-legend-bar" aria-hidden="true" />
+        <span className="timing-legend-copy">
+          <span className="timing-legend-label">{phase.label}</span>
+          <span className="timing-legend-category">{phase.category}</span>
+        </span>
+        <span className="timing-legend-value">{formatSpan(phase.span)}</span>
+      </>
+    );
+
+    return onSelect ? (
+      <button
+        key={phase.key}
+        type="button"
+        className={`timing-legend-row ${isActive ? "is-active" : ""}`}
+        aria-label={`Select ${phaseDescription(phase)}`}
+        aria-pressed={isSelected}
+        onMouseEnter={() => setHoveredKey(phase.key)}
+        onMouseLeave={() => setHoveredKey(null)}
+        onFocus={() => setFocusedKey(phase.key)}
+        onBlur={() => setFocusedKey(null)}
+        onClick={() => onSelect(phase.id)}
+        style={sharedStyle}
+      >
+        {content}
+      </button>
+    ) : (
+      <div
+        key={phase.key}
+        className={`timing-legend-row ${isActive ? "is-active" : ""}`}
+        onMouseEnter={() => setHoveredKey(phase.key)}
+        onMouseLeave={() => setHoveredKey(null)}
+        style={sharedStyle}
+      >
+        {content}
+      </div>
+    );
+  }
+
+  function renderMarkerLegendRow(marker: PreparedMarker) {
+    const isSelected = selectedId === marker.id;
+    const isActive =
+      isSelected || hoveredKey === marker.key || focusedKey === marker.key;
+    const markerStyle = {
+      "--marker-colour": marker.resolvedColour,
+    } as CSSProperties;
+    const content = (
+      <>
+        <span className="timing-marker-dot" aria-hidden="true" />
+        <span>{marker.label}</span>
+        <span className="timing-marker-angle">
+          {formatAngle(marker.normalisedAngle)}
+        </span>
+      </>
+    );
+
+    return onSelect ? (
+      <button
+        key={marker.key}
+        type="button"
+        className={`timing-marker-row ${isActive ? "is-active" : ""}`}
+        aria-label={`Select ${marker.label} at ${formatAngle(marker.normalisedAngle)}`}
+        aria-pressed={isSelected}
+        onMouseEnter={() => setHoveredKey(marker.key)}
+        onMouseLeave={() => setHoveredKey(null)}
+        onFocus={() => setFocusedKey(marker.key)}
+        onBlur={() => setFocusedKey(null)}
+        onClick={() => onSelect(marker.id)}
+        style={markerStyle}
+      >
+        {content}
+      </button>
+    ) : (
+      <span
+        key={marker.key}
+        className={`timing-marker-row ${isActive ? "is-active" : ""}`}
+        style={markerStyle}
+      >
+        {content}
+      </span>
+    );
+  }
 
   return (
     <figure className={className} style={containerStyle} aria-label={ariaLabel}>
@@ -321,26 +406,16 @@ export function TimingDial({
         <title id={titleId}>{ariaLabel}</title>
         <desc id={descriptionId}>
           {prepared.phases.length > 0
-            ? `${prepared.phases.length} timing phases and ${prepared.markers.length} reference markers. Use Tab to inspect each item${onSelect ? " and Enter or Space to select it" : ""}.`
+            ? `${prepared.phases.length} timing phases and ${prepared.markers.length} reference markers. Use the labelled controls below the diagram to inspect each item${onSelect ? " and select it" : ""}.`
             : "No valid timing phases are available."}
         </desc>
-
-        <defs>
-          <filter id={glowId} x="-40%" y="-40%" width="180%" height="180%">
-            <feGaussianBlur stdDeviation="5" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
 
         <circle
           cx={CENTRE}
           cy={CENTRE}
           r="302"
-          fill="#11140f"
-          stroke="rgba(148, 163, 184, 0.12)"
+          fill="#111510"
+          stroke="rgba(225, 228, 218, 0.14)"
           strokeWidth="1"
         />
         <circle
@@ -348,7 +423,7 @@ export function TimingDial({
           cy={CENTRE}
           r="277"
           fill="none"
-          stroke="rgba(148, 163, 184, 0.2)"
+          stroke="rgba(225, 228, 218, 0.24)"
           strokeWidth="1"
         />
 
@@ -373,8 +448,8 @@ export function TimingDial({
               y2={end.y}
               stroke={
                 angle === 0 || angle === 180
-                  ? "#f8fafc"
-                  : "rgba(203, 213, 225, 0.48)"
+                  ? "#f5f4ee"
+                  : "rgba(210, 215, 203, 0.46)"
               }
               strokeWidth={isThirtyDegreeTick ? 2 : isTenDegreeTick ? 1.4 : 1}
             />
@@ -390,7 +465,7 @@ export function TimingDial({
               key={`label-${angle}`}
               x={point.x}
               y={point.y}
-              fill={angle === 0 || angle === 180 ? "#f8fafc" : "#94a3b8"}
+              fill={angle === 0 || angle === 180 ? "#f5f4ee" : "#9ba398"}
               fontSize="11"
               fontWeight={angle === 0 || angle === 180 ? "700" : "500"}
               textAnchor="middle"
@@ -412,7 +487,7 @@ export function TimingDial({
               cy={CENTRE}
               r={radius}
               fill="none"
-              stroke="rgba(148, 163, 184, 0.1)"
+              stroke="rgba(210, 215, 203, 0.1)"
               strokeWidth={ringGeometry.strokeWidth}
               aria-hidden="true"
             />
@@ -436,8 +511,7 @@ export function TimingDial({
                   stroke={isSelected ? "rgba(255, 255, 255, 0.76)" : phase.colour}
                   strokeWidth={ringGeometry.strokeWidth + (isSelected ? 10 : 7)}
                   strokeLinecap="round"
-                  opacity={isSelected ? 0.34 : 0.2}
-                  filter={`url(#${glowId})`}
+                  opacity={isSelected ? 0.28 : 0.16}
                   pointerEvents="none"
                   aria-hidden="true"
                 />
@@ -451,16 +525,10 @@ export function TimingDial({
                 }
                 strokeLinecap="round"
                 opacity={isActive ? 1 : 0.86}
-                tabIndex={0}
-                role={onSelect ? "button" : "img"}
-                aria-label={phaseDescription(phase)}
-                aria-pressed={onSelect ? isSelected : undefined}
+                aria-hidden="true"
                 onMouseEnter={() => setHoveredKey(phase.key)}
                 onMouseLeave={() => setHoveredKey(null)}
-                onFocus={() => setFocusedKey(phase.key)}
-                onBlur={() => setFocusedKey(null)}
                 onClick={select}
-                onKeyDown={(event) => activateWithKeyboard(event, select)}
                 style={{
                   cursor: onSelect ? "pointer" : "default",
                   transition: "stroke-width 160ms ease, opacity 160ms ease",
@@ -474,7 +542,7 @@ export function TimingDial({
         })}
 
         {prepared.markers.map((marker) => {
-          const inner = pointAtAngle(marker.normalisedAngle, 73);
+          const inner = pointAtAngle(marker.normalisedAngle, 232);
           const outer = pointAtAngle(marker.normalisedAngle, 254);
           const cap = pointAtAngle(marker.normalisedAngle, 261);
           const isSelected = selectedId === marker.id;
@@ -486,16 +554,10 @@ export function TimingDial({
           return (
             <g
               key={marker.key}
-              tabIndex={0}
-              role={onSelect ? "button" : "img"}
-              aria-label={description}
-              aria-pressed={onSelect ? isSelected : undefined}
+              aria-hidden="true"
               onMouseEnter={() => setHoveredKey(marker.key)}
               onMouseLeave={() => setHoveredKey(null)}
-              onFocus={() => setFocusedKey(marker.key)}
-              onBlur={() => setFocusedKey(null)}
               onClick={select}
-              onKeyDown={(event) => activateWithKeyboard(event, select)}
               style={{ cursor: onSelect ? "pointer" : "default", outline: "none" }}
             >
               <title>{description}</title>
@@ -515,9 +577,8 @@ export function TimingDial({
                 cy={cap.y}
                 r={isActive ? 5.5 : 4}
                 fill={marker.resolvedColour}
-                stroke="#020617"
+                stroke="#111510"
                 strokeWidth="2"
-                filter={isActive ? `url(#${glowId})` : undefined}
               />
             </g>
           );
@@ -527,8 +588,8 @@ export function TimingDial({
           cx={CENTRE}
           cy={CENTRE}
           r="73"
-          fill="rgba(2, 6, 23, 0.92)"
-          stroke="rgba(226, 232, 240, 0.18)"
+          fill="#171b17"
+          stroke="rgba(225, 228, 218, 0.2)"
           strokeWidth="1.5"
           aria-hidden="true"
         />
@@ -537,14 +598,14 @@ export function TimingDial({
           cy={CENTRE}
           r="61"
           fill="none"
-          stroke="rgba(148, 163, 184, 0.12)"
+          stroke="rgba(210, 215, 203, 0.14)"
           strokeWidth="1"
           aria-hidden="true"
         />
         <text
           x={CENTRE}
           y={CENTRE - 21}
-          fill="#f8fafc"
+          fill="#f5f4ee"
           fontSize="20"
           fontWeight="760"
           textAnchor="middle"
@@ -556,8 +617,8 @@ export function TimingDial({
         <text
           x={CENTRE}
           y={CENTRE + 2}
-          fill="#64748b"
-          fontSize="9"
+          fill="#858e82"
+          fontSize="11"
           fontWeight="700"
           letterSpacing="1.6"
           textAnchor="middle"
@@ -569,7 +630,7 @@ export function TimingDial({
         <text
           x={CENTRE}
           y={CENTRE + 27}
-          fill="#cbd5e1"
+          fill="#c7cdc2"
           fontSize="16"
           fontWeight="650"
           textAnchor="middle"
@@ -614,212 +675,39 @@ export function TimingDial({
       </svg>
 
       {prepared.phases.length > 0 || prepared.markers.length > 0 ? (
-        <figcaption
-          style={{
-            display: "grid",
-            gap: "0.75rem",
-            marginTop: "0.5rem",
-          }}
-        >
+        <figcaption className="timing-dial-caption">
           {prepared.phases.length > 0 ? (
-            <div
-              aria-label="Timing phase legend"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 13rem), 1fr))",
-                gap: "0.55rem",
-              }}
-            >
-              {prepared.phases.map((phase) => {
-                const isSelected = selectedId === phase.id;
-                const isActive =
-                  isSelected || hoveredKey === phase.key || focusedKey === phase.key;
-                const sharedStyle: CSSProperties = {
-                  display: "grid",
-                  gridTemplateColumns: "0.7rem minmax(0, 1fr) auto",
-                  alignItems: "center",
-                  gap: "0.65rem",
-                  minWidth: 0,
-                  padding: "0.65rem 0.75rem",
-                  border: `1px solid ${isActive ? phase.colour : "rgba(148, 163, 184, 0.14)"}`,
-                  borderRadius: "0.8rem",
-                  background: isActive
-                    ? "rgba(30, 41, 59, 0.78)"
-                    : "rgba(15, 23, 42, 0.54)",
-                  color: "#f8fafc",
-                  textAlign: "left",
-                  font: "inherit",
-                  cursor: onSelect ? "pointer" : "default",
-                  transition: "background 160ms ease, border-color 160ms ease",
-                };
-                const content = (
-                  <>
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        width: "0.65rem",
-                        height: "1.85rem",
-                        borderRadius: "999px",
-                        background: phase.colour,
-                        boxShadow: isActive ? `0 0 1rem ${phase.colour}66` : "none",
-                      }}
-                    />
-                    <span style={{ minWidth: 0 }}>
-                      <span
-                        style={{
-                          display: "block",
-                          overflow: "hidden",
-                          color: "#f8fafc",
-                          fontSize: "0.83rem",
-                          fontWeight: 680,
-                          lineHeight: 1.25,
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {phase.label}
-                      </span>
-                      <span
-                        style={{
-                          display: "block",
-                          marginTop: "0.16rem",
-                          overflow: "hidden",
-                          color: "#94a3b8",
-                          fontSize: "0.67rem",
-                          fontWeight: 650,
-                          letterSpacing: "0.065em",
-                          textOverflow: "ellipsis",
-                          textTransform: "uppercase",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {phase.category}
-                      </span>
-                    </span>
-                    <span
-                      style={{
-                        color: isActive ? "#f8fafc" : "#94a3b8",
-                        fontSize: "0.76rem",
-                        fontVariantNumeric: "tabular-nums",
-                        fontWeight: 650,
-                      }}
-                    >
-                      {formatSpan(phase.span)}
-                    </span>
-                  </>
-                );
-
-                return onSelect ? (
-                  <button
-                    key={phase.key}
-                    type="button"
-                    aria-label={`Select ${phaseDescription(phase)}`}
-                    aria-pressed={isSelected}
-                    onMouseEnter={() => setHoveredKey(phase.key)}
-                    onMouseLeave={() => setHoveredKey(null)}
-                    onFocus={() => setFocusedKey(phase.key)}
-                    onBlur={() => setFocusedKey(null)}
-                    onClick={() => onSelect(phase.id)}
-                    style={sharedStyle}
-                  >
-                    {content}
-                  </button>
-                ) : (
+            <>
+              <div className="timing-phase-legend" aria-label="Timing phase legend">
+                {primaryLegendPhases.map(renderPhaseLegendRow)}
+              </div>
+              {analysisLegendPhases.length > 0 ? (
+                <details className="timing-legend-disclosure">
+                  <summary>Analysis overlays ({analysisLegendPhases.length})</summary>
                   <div
-                    key={phase.key}
-                    onMouseEnter={() => setHoveredKey(phase.key)}
-                    onMouseLeave={() => setHoveredKey(null)}
-                    style={sharedStyle}
+                    className="timing-phase-legend"
+                    aria-label="Analysis overlay legend"
                   >
-                    {content}
+                    {analysisLegendPhases.map(renderPhaseLegendRow)}
                   </div>
-                );
-              })}
-            </div>
+                </details>
+              ) : null}
+            </>
           ) : null}
 
           {prepared.markers.length > 0 ? (
-            <div
-              aria-label="Reference marker legend"
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "0.45rem",
-              }}
-            >
-              {prepared.markers.map((marker) => {
-                const isSelected = selectedId === marker.id;
-                const isActive =
-                  isSelected || hoveredKey === marker.key || focusedKey === marker.key;
-                const markerStyle: CSSProperties = {
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "0.45rem",
-                  padding: "0.42rem 0.58rem",
-                  border: `1px solid ${isActive ? marker.resolvedColour : "rgba(148, 163, 184, 0.14)"}`,
-                  borderRadius: "999px",
-                  background: isActive
-                    ? "rgba(30, 41, 59, 0.78)"
-                    : "rgba(15, 23, 42, 0.5)",
-                  color: "#cbd5e1",
-                  font: "inherit",
-                  fontSize: "0.72rem",
-                  cursor: onSelect ? "pointer" : "default",
-                };
-                const markerContent = (
-                  <>
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        width: "0.42rem",
-                        height: "0.42rem",
-                        borderRadius: "50%",
-                        background: marker.resolvedColour,
-                      }}
-                    />
-                    <span>{marker.label}</span>
-                    <span style={{ color: "#64748b", fontVariantNumeric: "tabular-nums" }}>
-                      {formatAngle(marker.normalisedAngle)}
-                    </span>
-                  </>
-                );
-
-                return onSelect ? (
-                  <button
-                    key={marker.key}
-                    type="button"
-                    aria-label={`Select ${marker.label} at ${formatAngle(marker.normalisedAngle)}`}
-                    aria-pressed={isSelected}
-                    onMouseEnter={() => setHoveredKey(marker.key)}
-                    onMouseLeave={() => setHoveredKey(null)}
-                    onFocus={() => setFocusedKey(marker.key)}
-                    onBlur={() => setFocusedKey(null)}
-                    onClick={() => onSelect(marker.id)}
-                    style={markerStyle}
-                  >
-                    {markerContent}
-                  </button>
-                ) : (
-                  <span key={marker.key} style={markerStyle}>
-                    {markerContent}
-                  </span>
-                );
-              })}
-            </div>
+            <details className="timing-legend-disclosure">
+              <summary>Event markers ({prepared.markers.length})</summary>
+              <div className="timing-marker-legend" aria-label="Reference marker legend">
+                {prepared.markers.map(renderMarkerLegendRow)}
+              </div>
+            </details>
           ) : null}
         </figcaption>
       ) : null}
 
       {omittedCount > 0 ? (
-        <p
-          role="status"
-          style={{
-            margin: "0.75rem 0 0",
-            color: "#94a3b8",
-            fontSize: "0.72rem",
-            lineHeight: 1.45,
-          }}
-        >
+        <p className="timing-omitted-note" role="status">
           {omittedCount} invalid {omittedCount === 1 ? "item was" : "items were"} omitted
           from the diagram.
         </p>

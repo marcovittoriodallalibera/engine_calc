@@ -32,12 +32,13 @@ test("server-renders the complete calculator shell", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>Two-stroke timing workbench \| Phase 360<\/title>/i);
-  assert.match(html, /See the whole cycle, not isolated numbers\./);
+  assert.match(html, /Vespa 51 mm study/);
+  assert.match(html, /Live slider-crank geometry across one complete crankshaft cycle\./);
   assert.match(html, /360° timing map/);
   assert.match(html, /Compression/);
   assert.match(html, /Squish geometry/);
   assert.match(html, /Time-area/);
-  assert.match(html, /Client-only calculation/);
+  assert.match(html, /Calculation is local to this browser\./);
   assert.match(html, /Private-by-default two-stroke geometry/);
   assert.doesNotMatch(html, /Your site is taking shape|Building your site|react-loading-skeleton/);
 });
@@ -46,7 +47,7 @@ test("renders accessible controls and explicit interpretation limits", async () 
   const response = await render();
   const html = await response.text();
 
-  assert.match(html, /aria-label="Engine inputs"/);
+  assert.match(html, /aria-labelledby="engine-setup-heading"/);
   assert.match(html, /aria-label="Calculated results"/);
   assert.match(html, /aria-label="Induction mode"/);
   assert.match(html, /simultaneous geometric opening only/);

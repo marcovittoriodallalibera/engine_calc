@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -49,6 +50,8 @@ const sourceUnits: Record<PortSourceMode, string> = {
   duration: "deg",
 };
 
+const DEMONSTRATION_PROJECT_JSON = serialiseProject(cloneDemonstrationProject());
+
 function formatNumber(value: number | null | undefined, digits = 1): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "Not set";
   return value.toLocaleString("en-GB", {
@@ -63,9 +66,23 @@ function formatSigned(value: number | null | undefined, digits = 1): string {
   return `${sign}${formatNumber(value, digits)}`;
 }
 
+function formatConstraint(value: number): string {
+  return value.toLocaleString("en-GB", { maximumFractionDigits: 2 });
+}
+
 function formatTimeArea(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "Not set";
   return value.toExponential(3);
+}
+
+function normaliseAngle(angle: number): number {
+  return ((angle % 360) + 360) % 360;
+}
+
+function clockwiseDuration(start: number, end: number): number {
+  const raw = end - start;
+  if (Math.abs(raw) >= 360) return 360;
+  return normaliseAngle(raw);
 }
 
 function sourceLabel(mode: PortSourceMode): string {
@@ -90,6 +107,11 @@ interface NumberFieldProps {
   help?: string;
   disabled?: boolean;
   compact?: boolean;
+  minimum?: number;
+  maximum?: number;
+  exclusiveMinimum?: boolean;
+  integer?: boolean;
+  validationMessage?: string | null;
 }
 
 function NumberField({
@@ -100,15 +122,56 @@ function NumberField({
   help,
   disabled,
   compact,
+  minimum,
+  maximum,
+  exclusiveMinimum,
+  integer,
+  validationMessage,
 }: NumberFieldProps) {
-  const invalid = value.trim() !== "" && parseLocaleNumber(value) === null;
+  const numericValue = parseLocaleNumber(value);
+  let errorMessage: string | null = null;
+
+  if (value.trim() !== "") {
+    if (numericValue === null) {
+      errorMessage = "Enter a valid number.";
+    } else if (integer && !Number.isInteger(numericValue)) {
+      errorMessage = "Use a whole number.";
+    } else if (
+      minimum !== undefined &&
+      (exclusiveMinimum ? numericValue <= minimum : numericValue < minimum)
+    ) {
+      errorMessage = exclusiveMinimum
+        ? `Use a value greater than ${formatConstraint(minimum)}.`
+        : `Use ${formatConstraint(minimum)} or more.`;
+    } else if (maximum !== undefined && numericValue > maximum) {
+      errorMessage = `Use ${formatConstraint(maximum)} or less.`;
+    } else if (validationMessage) {
+      errorMessage = validationMessage;
+    }
+  }
+
+  const invalid = errorMessage !== null;
+  const fieldId = useId();
+  const helpId = help ? `${fieldId}-help` : undefined;
+  const errorId = invalid ? `${fieldId}-error` : undefined;
+  const describedBy = [helpId, errorId].filter(Boolean).join(" ") || undefined;
   return (
     <label className={`field ${compact ? "field-compact" : ""}`}>
       <span className="field-label">
         <span>{label}</span>
         {help ? (
-          <span className="field-help" title={help} aria-label={help} tabIndex={0}>
-            i
+          <span className="field-help-wrap">
+            <span
+              className="field-help"
+              aria-label={`Help for ${label}`}
+              aria-describedby={helpId}
+              tabIndex={0}
+            >
+              i
+            </span>
+            <span className="field-help-copy" id={helpId} role="tooltip">
+              {help}
+            </span>
           </span>
         ) : null}
       </span>
@@ -119,11 +182,16 @@ function NumberField({
           value={value}
           disabled={disabled}
           aria-invalid={invalid}
+          aria-describedby={describedBy}
           onChange={(event) => onChange(event.target.value)}
         />
         {unit ? <span className="input-unit">{unit}</span> : null}
       </span>
-      {invalid ? <span className="field-error">Enter a valid number</span> : null}
+      {invalid ? (
+        <span className="field-error" id={errorId}>
+          {errorMessage}
+        </span>
+      ) : null}
     </label>
   );
 }
@@ -150,12 +218,10 @@ function Metric({ label, value, unit, detail, tone = "neutral" }: MetricProps) {
 }
 
 function SectionHeading({
-  eyebrow,
   title,
   detail,
   action,
 }: {
-  eyebrow?: string;
   title: string;
   detail?: string;
   action?: ReactNode;
@@ -163,7 +229,6 @@ function SectionHeading({
   return (
     <div className="section-heading">
       <div>
-        {eyebrow ? <span className="eyebrow">{eyebrow}</span> : null}
         <h2>{title}</h2>
         {detail ? <p>{detail}</p> : null}
       </div>
@@ -175,17 +240,28 @@ function SectionHeading({
 function PortEditor({
   port,
   analysis,
+  strokeMm,
   onUpdate,
   onRemove,
+  onSelect,
 }: {
   port: PortDraft;
   analysis: PortAnalysis | undefined;
+  strokeMm: number | null;
   onUpdate: (patch: Partial<PortDraft>) => void;
   onRemove?: () => void;
+  onSelect?: () => void;
 }) {
+  const [isOpen, setIsOpen] = useState(port.kind === "exhaust");
+
   return (
-    <details className="port-editor" open={port.kind === "exhaust"}>
-      <summary>
+    <details
+      className="port-editor"
+      id={`port-${port.id}`}
+      open={isOpen}
+      onToggle={(event) => setIsOpen(event.currentTarget.open)}
+    >
+      <summary onClick={onSelect}>
         <span className={`port-dot port-dot-${port.kind}`} aria-hidden="true" />
         <span className="port-summary-main">
           <strong>{port.label || "Untitled port"}</strong>
@@ -251,6 +327,17 @@ function PortEditor({
           label={sourceLabel(port.sourceMode)}
           value={port.sourceValue}
           unit={sourceUnits[port.sourceMode]}
+          minimum={0}
+          maximum={
+            port.sourceMode === "duration"
+              ? 360
+              : port.sourceMode === "opening-angle"
+                ? 180
+                : port.sourceMode === "travel-from-tdc" ||
+                    port.sourceMode === "height-above-bdc"
+                  ? strokeMm ?? undefined
+                  : undefined
+          }
           onChange={(sourceValue) => onUpdate({ sourceValue })}
           help={
             port.sourceMode === "travel-from-tdc"
@@ -297,6 +384,8 @@ function PortEditor({
               label="Window width"
               value={port.widthMm}
               unit="mm"
+              minimum={0}
+              exclusiveMinimum
               onChange={(widthMm) => onUpdate({ widthMm })}
               help="Width of one idealised rectangular window."
             />
@@ -305,6 +394,8 @@ function PortEditor({
               label="Window height"
               value={port.heightMm}
               unit="mm"
+              minimum={0}
+              exclusiveMinimum
               onChange={(heightMm) => onUpdate({ heightMm })}
               help="Height of the idealised rectangular window used for time-area."
             />
@@ -313,6 +404,8 @@ function PortEditor({
               label="Window count"
               value={port.count}
               unit="qty"
+              minimum={1}
+              integer
               onChange={(count) => onUpdate({ count })}
             />
             <NumberField
@@ -320,6 +413,7 @@ function PortEditor({
               label="Measurement uncertainty"
               value={port.uncertaintyMm}
               unit="± mm"
+              minimum={0}
               onChange={(uncertaintyMm) => onUpdate({ uncertaintyMm })}
             />
           </div>
@@ -406,11 +500,44 @@ export function EngineWorkbench() {
   const [actionStatus, setActionStatus] = useState(
     "Illustrative values loaded. Edit any field to begin.",
   );
+  const [localSaveState, setLocalSaveState] = useState<
+    "checking" | "saved" | "invalid" | "unavailable"
+  >("checking");
   const [selectedArc, setSelectedArc] = useState<string | null>(null);
   const [baseline, setBaseline] = useState<EngineProjectAnalysis | null>(null);
+  const [mobileView, setMobileView] = useState<"inputs" | "map" | "results">(
+    "map",
+  );
+  const [openPrimarySections, setOpenPrimarySections] = useState({
+    geometry: true,
+    ports: true,
+    induction: true,
+  });
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const analysis = useMemo(() => analyseProject(project), [project]);
+  const geometryBoreMm = parseLocaleNumber(project.geometry.boreMm);
+  const geometryStrokeMm = parseLocaleNumber(project.geometry.strokeMm);
+  const rotaryAdvanceDeg = parseLocaleNumber(project.induction.advanceBtdcDeg);
+  const rotaryDelayDeg = parseLocaleNumber(project.induction.delayAtdcDeg);
+  const rotaryTimingValidationMessage =
+    rotaryAdvanceDeg !== null &&
+    rotaryDelayDeg !== null &&
+    rotaryAdvanceDeg + rotaryDelayDeg > 360
+      ? "Opening advance and closing delay must total 360° or less."
+      : null;
+  const isIllustrativeProject = useMemo(
+    () => serialiseProject(project) === DEMONSTRATION_PROJECT_JSON,
+    [project],
+  );
+  const localSaveMessage =
+    localSaveState === "saved"
+      ? "Saved locally"
+      : localSaveState === "invalid"
+        ? "Not saved: invalid inputs"
+        : localSaveState === "unavailable"
+          ? "Local saving unavailable"
+          : "Checking local save";
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -447,21 +574,61 @@ export function EngineWorkbench() {
   }, []);
 
   useEffect(() => {
-    if (!hydrated || !analysis.validGeometry) return;
-    try {
-      window.localStorage.setItem(PROJECT_STORAGE_KEY, serialiseProject(project));
-    } catch {
-      window.setTimeout(
-        () => setActionStatus("Automatic local save is unavailable in this browser."),
-        0,
-      );
+    if (!hydrated) return;
+    let nextSaveState: typeof localSaveState;
+    let saveFailureMessage: string | null = null;
+
+    if (!analysis.validGeometry) {
+      nextSaveState = "invalid";
+    } else {
+      try {
+        window.localStorage.setItem(PROJECT_STORAGE_KEY, serialiseProject(project));
+        nextSaveState = "saved";
+      } catch {
+        nextSaveState = "unavailable";
+        saveFailureMessage = "Automatic local save is unavailable in this browser.";
+      }
     }
+
+    const timer = window.setTimeout(() => {
+      setLocalSaveState(nextSaveState);
+      if (saveFailureMessage) setActionStatus(saveFailureMessage);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [analysis.validGeometry, hydrated, project]);
+
+  function noteEdit() {
+    setActionStatus(
+      "Changes calculated in real time. Local save follows valid core geometry.",
+    );
+  }
+
+  function switchMobileView(view: "inputs" | "map" | "results") {
+    setMobileView(view);
+    window.requestAnimationFrame(() => {
+      window.scrollTo({
+        top: 0,
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+      });
+    });
+  }
+
+  function setPrimarySectionOpen(
+    section: keyof typeof openPrimarySections,
+    open: boolean,
+  ) {
+    setOpenPrimarySections((current) =>
+      current[section] === open ? current : { ...current, [section]: open },
+    );
+  }
 
   function updateGeometry(
     key: keyof EngineProjectDraft["geometry"],
     value: string,
   ) {
+    noteEdit();
     setProject((current) => ({
       ...current,
       geometry: { ...current.geometry, [key]: value },
@@ -472,6 +639,7 @@ export function EngineWorkbench() {
     key: K,
     value: EngineProjectDraft["compression"][K],
   ) {
+    noteEdit();
     setProject((current) => ({
       ...current,
       compression: { ...current.compression, [key]: value },
@@ -482,6 +650,7 @@ export function EngineWorkbench() {
     key: K,
     value: EngineProjectDraft["squish"][K],
   ) {
+    noteEdit();
     setProject((current) => ({
       ...current,
       squish: { ...current.squish, [key]: value },
@@ -492,6 +661,7 @@ export function EngineWorkbench() {
     key: keyof EngineProjectDraft["induction"],
     value: string,
   ) {
+    noteEdit();
     setProject((current) => ({
       ...current,
       induction: { ...current.induction, [key]: value },
@@ -499,6 +669,7 @@ export function EngineWorkbench() {
   }
 
   function updatePort(id: string, patch: Partial<PortDraft>) {
+    noteEdit();
     let resolvedPatch = patch;
     if (patch.sourceMode) {
       const currentAnalysis = analysis.ports.find((port) => port.id === id);
@@ -530,6 +701,7 @@ export function EngineWorkbench() {
   }
 
   function addTransfer() {
+    noteEdit();
     const id =
       typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
@@ -550,6 +722,7 @@ export function EngineWorkbench() {
   }
 
   function removePort(id: string) {
+    noteEdit();
     setProject((current) => ({
       ...current,
       ports: current.ports.filter((port) => port.id !== id),
@@ -706,6 +879,24 @@ export function EngineWorkbench() {
     ]);
   }, [analysis.ports, project.presentation.showReferenceLabels]);
 
+  const selectedTimingPhase = useMemo(
+    () => timingPhases.find((phase) => phase.id === selectedArc) ?? null,
+    [selectedArc, timingPhases],
+  );
+  const selectedTimingMarker = useMemo(
+    () => timingMarkers.find((marker) => marker.id === selectedArc) ?? null,
+    [selectedArc, timingMarkers],
+  );
+
+  function revealPortEditor(portId: string) {
+    setMobileView("inputs");
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(`port-${portId}`);
+      if (target instanceof HTMLDetailsElement) target.open = true;
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+
   const scenarioEffects = useMemo(() => {
     const boreMm = parseLocaleNumber(project.geometry.boreMm);
     const strokeMm = parseLocaleNumber(project.geometry.strokeMm);
@@ -781,7 +972,6 @@ export function EngineWorkbench() {
 
   const primaryTransfer = analysis.transfers[0] ?? null;
   const comparisonBlowdown = baseline?.timing.globalBlowdownDeg ?? null;
-  const comparisonTrapped = baseline?.compression.trappedRatio ?? null;
 
   return (
     <div className="app-shell">
@@ -795,9 +985,13 @@ export function EngineWorkbench() {
             <small>Two-stroke workbench</small>
           </span>
         </a>
-        <div className="privacy-state">
+        <div
+          className={`privacy-state is-${localSaveState}`}
+          role="status"
+          aria-live="polite"
+        >
           <span aria-hidden="true" />
-          Client-only calculation
+          {localSaveMessage}
         </div>
         <nav className="top-actions" aria-label="Project actions">
           <input
@@ -807,47 +1001,94 @@ export function EngineWorkbench() {
             accept="application/json,.json"
             onChange={importProject}
           />
-          <button type="button" onClick={() => importInputRef.current?.click()}>
-            Import
-          </button>
-          <button type="button" onClick={exportProject}>
-            JSON
-          </button>
-          <button type="button" onClick={exportSvg}>
-            SVG
-          </button>
-          <button type="button" onClick={() => window.print()}>
-            Print
-          </button>
+          <details className="project-menu">
+            <summary>Project</summary>
+            <div className="project-menu-popover">
+              <button type="button" onClick={() => importInputRef.current?.click()}>
+                Import project
+              </button>
+              <button type="button" onClick={exportProject}>
+                Export project
+              </button>
+              <button type="button" onClick={exportSvg}>
+                Export diagram
+              </button>
+              <button type="button" onClick={() => window.print()}>
+                Print report
+              </button>
+            </div>
+          </details>
           <button className="button-primary" type="button" onClick={shareProject}>
-            Share project
+            Share
           </button>
         </nav>
       </header>
 
-      <main id="top" className="workbench">
-        <aside className="control-panel" aria-label="Engine inputs">
+      <nav className="mobile-view-nav" aria-label="Workbench view">
+        <div className="mobile-view-switcher">
+          {(["inputs", "map", "results"] as const).map((view) => (
+            <button
+              key={view}
+              type="button"
+              aria-pressed={mobileView === view}
+              onClick={() => switchMobileView(view)}
+            >
+              {view === "inputs" ? "Setup" : view === "map" ? "Timing map" : "Results"}
+            </button>
+          ))}
+        </div>
+        <div className="mobile-live-readout" aria-live="polite">
+          <span
+            aria-label={`Exhaust duration ${formatNumber(analysis.exhaust?.durationDeg, 1)} degrees`}
+          >
+            <small aria-hidden="true">EXH</small>{" "}
+            <strong aria-hidden="true">
+              {formatNumber(analysis.exhaust?.durationDeg, 1)}°
+            </strong>
+          </span>
+          <span
+            aria-label={`Blowdown ${formatNumber(analysis.timing.globalBlowdownDeg, 1)} degrees`}
+          >
+            <small aria-hidden="true">BD</small>{" "}
+            <strong aria-hidden="true">
+              {formatNumber(analysis.timing.globalBlowdownDeg, 1)}°
+            </strong>
+          </span>
+        </div>
+      </nav>
+
+      <main id="top" className="workbench" data-mobile-view={mobileView}>
+        <aside className="control-panel" aria-labelledby="engine-setup-heading">
           <div className="control-intro">
-            <span className="eyebrow">Live configuration</span>
+            <div className="project-context">
+              <h2 id="engine-setup-heading">Engine setup</h2>
+              {isIllustrativeProject ? <strong>Sample data</strong> : <strong>Your setup</strong>}
+            </div>
             <input
               className="project-name-input"
               value={project.name}
               maxLength={80}
               aria-label="Project name"
-              onChange={(event) =>
+              onChange={(event) => {
+                noteEdit();
                 setProject((current) => ({
                   ...current,
                   name: event.target.value,
-                }))
-              }
+                }));
+              }}
             />
-            <p>Every valid edit recalculates the complete 360° model.</p>
+            <p>Every valid measurement updates the timing map immediately.</p>
           </div>
 
           <div className="control-scroll">
-            <details className="control-section" open>
+            <details
+              className="control-section"
+              open={openPrimarySections.geometry}
+              onToggle={(event) =>
+                setPrimarySectionOpen("geometry", event.currentTarget.open)
+              }
+            >
               <summary>
-                <span className="section-index">01</span>
                 <span>
                   <strong>Engine geometry</strong>
                   <small>Slider-crank and operating point</small>
@@ -860,6 +1101,8 @@ export function EngineWorkbench() {
                     label="Bore"
                     value={project.geometry.boreMm}
                     unit="mm"
+                    minimum={0}
+                    exclusiveMinimum
                     onChange={(value) => updateGeometry("boreMm", value)}
                   />
                   <NumberField
@@ -867,6 +1110,8 @@ export function EngineWorkbench() {
                     label="Stroke"
                     value={project.geometry.strokeMm}
                     unit="mm"
+                    minimum={0}
+                    exclusiveMinimum
                     onChange={(value) => updateGeometry("strokeMm", value)}
                   />
                   <NumberField
@@ -874,6 +1119,12 @@ export function EngineWorkbench() {
                     label="Rod length"
                     value={project.geometry.rodLengthMm}
                     unit="mm"
+                    minimum={
+                      geometryStrokeMm !== null
+                        ? Math.max(0, geometryStrokeMm / 2)
+                        : 0
+                    }
+                    exclusiveMinimum
                     help="Centre-to-centre connecting-rod length."
                     onChange={(value) => updateGeometry("rodLengthMm", value)}
                   />
@@ -882,6 +1133,8 @@ export function EngineWorkbench() {
                     label="Engine speed"
                     value={project.geometry.rpm}
                     unit="RPM"
+                    minimum={0}
+                    exclusiveMinimum
                     onChange={(value) => updateGeometry("rpm", value)}
                   />
                 </div>
@@ -903,9 +1156,14 @@ export function EngineWorkbench() {
               </div>
             </details>
 
-            <details className="control-section" open>
+            <details
+              className="control-section"
+              open={openPrimarySections.ports}
+              onToggle={(event) =>
+                setPrimarySectionOpen("ports", event.currentTarget.open)
+              }
+            >
               <summary>
-                <span className="section-index">02</span>
                 <span>
                   <strong>Port timing</strong>
                   <small>Exhaust and transfer groups</small>
@@ -917,8 +1175,10 @@ export function EngineWorkbench() {
                     key={port.id}
                     port={port}
                     analysis={analysis.ports.find((item) => item.id === port.id)}
+                    strokeMm={geometryStrokeMm}
                     onUpdate={(patch) => updatePort(port.id, patch)}
                     onRemove={index > 3 ? () => removePort(port.id) : undefined}
+                    onSelect={() => setSelectedArc(port.id)}
                   />
                 ))}
                 <button className="button-secondary full-width" type="button" onClick={addTransfer}>
@@ -927,9 +1187,14 @@ export function EngineWorkbench() {
               </div>
             </details>
 
-            <details className="control-section" open>
+            <details
+              className="control-section"
+              open={openPrimarySections.induction}
+              onToggle={(event) =>
+                setPrimarySectionOpen("induction", event.currentTarget.open)
+              }
+            >
               <summary>
-                <span className="section-index">03</span>
                 <span>
                   <strong>Induction</strong>
                   <small>Rotary valve, reed or none</small>
@@ -943,12 +1208,13 @@ export function EngineWorkbench() {
                       type="button"
                       className={project.induction.mode === mode ? "is-active" : ""}
                       aria-pressed={project.induction.mode === mode}
-                      onClick={() =>
+                      onClick={() => {
+                        noteEdit();
                         setProject((current) => ({
                           ...current,
                           induction: { ...current.induction, mode },
-                        }))
-                      }
+                        }));
+                      }}
                     >
                       {mode === "rotary" ? "Rotary" : mode === "reed" ? "Reed" : "None"}
                     </button>
@@ -962,6 +1228,9 @@ export function EngineWorkbench() {
                         label="Inlet opens"
                         value={project.induction.advanceBtdcDeg}
                         unit="° BTDC"
+                        minimum={0}
+                        maximum={360}
+                        validationMessage={rotaryTimingValidationMessage}
                         onChange={(value) => updateInduction("advanceBtdcDeg", value)}
                       />
                       <NumberField
@@ -969,6 +1238,9 @@ export function EngineWorkbench() {
                         label="Inlet closes"
                         value={project.induction.delayAtdcDeg}
                         unit="° ATDC"
+                        minimum={0}
+                        maximum={360}
+                        validationMessage={rotaryTimingValidationMessage}
                         onChange={(value) => updateInduction("delayAtdcDeg", value)}
                       />
                     </div>
@@ -976,6 +1248,7 @@ export function EngineWorkbench() {
                       label="Effective inlet window area"
                       value={project.induction.effectiveWindowAreaMm2}
                       unit="mm²"
+                      minimum={0}
                       help="Used only for an idealised constant-area inlet time-area estimate. The actual opening curve is not modelled."
                       onChange={(value) =>
                         updateInduction("effectiveWindowAreaMm2", value)
@@ -996,9 +1269,10 @@ export function EngineWorkbench() {
               </div>
             </details>
 
+            <p className="control-group-label">Advanced measurements</p>
+
             <details className="control-section">
               <summary>
-                <span className="section-index">04</span>
                 <span>
                   <strong>Compression and squish</strong>
                   <small>Measured volumes and four-point gap</small>
@@ -1028,6 +1302,8 @@ export function EngineWorkbench() {
                     label="Clearance volume"
                     value={project.compression.clearanceVolumeCc}
                     unit="cc"
+                    minimum={0}
+                    exclusiveMinimum
                     help="Assembled volume above the piston at TDC. Include all volumes consistently."
                     onChange={(value) =>
                       updateCompression("clearanceVolumeCc", value)
@@ -1041,6 +1317,8 @@ export function EngineWorkbench() {
                         label="Head chamber"
                         value={project.compression.headChamberVolumeCc}
                         unit="cc"
+                        minimum={0}
+                        exclusiveMinimum
                         onChange={(value) => updateCompression("headChamberVolumeCc", value)}
                       />
                       <NumberField
@@ -1082,6 +1360,8 @@ export function EngineWorkbench() {
                   label="Target trapped CR"
                   value={project.compression.targetTrappedRatio}
                   unit=":1"
+                  minimum={1}
+                  exclusiveMinimum
                   onChange={(value) =>
                     updateCompression("targetTrappedRatio", value)
                   }
@@ -1093,6 +1373,7 @@ export function EngineWorkbench() {
                     label="North gap"
                     value={project.squish.gapNorthMm}
                     unit="mm"
+                    minimum={0}
                     onChange={(value) => updateSquish("gapNorthMm", value)}
                   />
                   <NumberField
@@ -1100,6 +1381,7 @@ export function EngineWorkbench() {
                     label="East gap"
                     value={project.squish.gapEastMm}
                     unit="mm"
+                    minimum={0}
                     onChange={(value) => updateSquish("gapEastMm", value)}
                   />
                   <NumberField
@@ -1107,6 +1389,7 @@ export function EngineWorkbench() {
                     label="South gap"
                     value={project.squish.gapSouthMm}
                     unit="mm"
+                    minimum={0}
                     onChange={(value) => updateSquish("gapSouthMm", value)}
                   />
                   <NumberField
@@ -1114,6 +1397,7 @@ export function EngineWorkbench() {
                     label="West gap"
                     value={project.squish.gapWestMm}
                     unit="mm"
+                    minimum={0}
                     onChange={(value) => updateSquish("gapWestMm", value)}
                   />
                 </div>
@@ -1142,6 +1426,8 @@ export function EngineWorkbench() {
                       label="Bowl diameter"
                       value={project.squish.bowlDiameterMm}
                       unit="mm"
+                      minimum={0}
+                      maximum={geometryBoreMm ?? undefined}
                       onChange={(value) => updateSquish("bowlDiameterMm", value)}
                     />
                   ) : (
@@ -1150,6 +1436,10 @@ export function EngineWorkbench() {
                       label="Radial band width"
                       value={project.squish.bandWidthMm}
                       unit="mm"
+                      minimum={0}
+                      maximum={
+                        geometryBoreMm !== null ? geometryBoreMm / 2 : undefined
+                      }
                       onChange={(value) => updateSquish("bandWidthMm", value)}
                     />
                   )}
@@ -1158,6 +1448,7 @@ export function EngineWorkbench() {
                     label="Documented minimum"
                     value={project.squish.manufacturerMinimumMm}
                     unit="mm"
+                    minimum={0}
                     help="Optional. Enter only a minimum supported by your piston, cylinder or engine supplier."
                     onChange={(value) =>
                       updateSquish("manufacturerMinimumMm", value)
@@ -1169,7 +1460,6 @@ export function EngineWorkbench() {
 
             <details className="control-section">
               <summary>
-                <span className="section-index">05</span>
                 <span>
                   <strong>What-if changes</strong>
                   <small>Evaluate each change from the current baseline</small>
@@ -1180,6 +1470,7 @@ export function EngineWorkbench() {
                   label="Add head gasket"
                   value={project.compression.headGasketThicknessMm}
                   unit="mm"
+                  minimum={0}
                   onChange={(value) =>
                     updateCompression("headGasketThicknessMm", value)
                   }
@@ -1188,6 +1479,7 @@ export function EngineWorkbench() {
                   label="Add base spacer"
                   value={project.compression.baseSpacerThicknessMm}
                   unit="mm"
+                  minimum={0}
                   onChange={(value) =>
                     updateCompression("baseSpacerThicknessMm", value)
                   }
@@ -1196,6 +1488,7 @@ export function EngineWorkbench() {
                   label="Raise exhaust roof"
                   value={project.compression.exhaustRaiseMm}
                   unit="mm"
+                  minimum={0}
                   onChange={(value) => updateCompression("exhaustRaiseMm", value)}
                 />
                 <p className="fine-print">
@@ -1210,124 +1503,120 @@ export function EngineWorkbench() {
             <button className="text-button" type="button" onClick={resetProject}>
               Reset illustrative data
             </button>
-            <span>Saved locally when valid</span>
+            <span>{localSaveMessage}</span>
           </div>
         </aside>
 
         <section className="analysis-panel" aria-label="Calculated results">
-          <div className="analysis-intro">
-            <div>
-              <span className="eyebrow">Geometric model</span>
-              <h1>See the whole cycle, not isolated numbers.</h1>
-              <p>
-                Exact slider-crank geometry links millimetres, crank angles,
-                phase relationships, compression, squish and idealised time-area.
-              </p>
-            </div>
-            <div className="analysis-intro-actions">
-              <button
-                className="button-secondary"
-                type="button"
-                onClick={() => {
-                  setBaseline(analysis);
-                  setActionStatus("Current results set as comparison baseline.");
-                }}
-              >
-                Set comparison baseline
-              </button>
-              {baseline ? (
-                <button className="text-button" type="button" onClick={() => setBaseline(null)}>
-                  Clear comparison
+          <div className="analysis-workspace">
+            <div className="analysis-intro">
+              <div>
+                <h1>{project.name || "Untitled engine"}</h1>
+                <p>
+                  Live slider-crank geometry across one complete crankshaft cycle.
+                </p>
+              </div>
+              <div className="analysis-intro-actions">
+                <button
+                  className="button-secondary"
+                  type="button"
+                  onClick={() => {
+                    setBaseline(analysis);
+                    setActionStatus("Current blowdown saved as the comparison baseline.");
+                  }}
+                >
+                  Set blowdown baseline
                 </button>
+                {baseline ? (
+                  <button className="text-button" type="button" onClick={() => setBaseline(null)}>
+                    Clear baseline
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="status-line" role="status" aria-live="polite">
+              <span className={analysis.validGeometry ? "status-ok" : "status-warning"}>
+                {analysis.validGeometry
+                  ? "Core geometry calculable"
+                  : "Core geometry incomplete"}
+              </span>
+              {isIllustrativeProject ? <span className="sample-state">Sample data</span> : null}
+              <span className="scope-state">Calculation only, not assembly approval</span>
+              <span className="status-message">{actionStatus}</span>
+              {analysis.diagnostics.length ? (
+                <a href="#model-notes">
+                  {analysis.diagnostics.length} model {analysis.diagnostics.length === 1 ? "note" : "notes"}
+                </a>
               ) : null}
             </div>
-          </div>
 
-          <div className="status-line" role="status" aria-live="polite">
-            <span className={analysis.validGeometry ? "status-ok" : "status-warning"}>
-              {analysis.validGeometry ? "Model current" : "Geometry incomplete"}
-            </span>
-            <span>{actionStatus}</span>
-          </div>
+            <div className="metric-ribbon">
+              <Metric
+                label="Exhaust"
+                value={formatNumber(analysis.exhaust?.durationDeg, 1)}
+                unit="°"
+                detail="Total open duration"
+                tone="accent"
+              />
+              <Metric
+                label={primaryTransfer?.port.label ?? "Primary transfer"}
+                value={formatNumber(primaryTransfer?.port.durationDeg, 1)}
+                unit="°"
+                detail="Total open duration"
+              />
+              <Metric
+                label="Blowdown"
+                value={formatNumber(analysis.timing.globalBlowdownDeg, 1)}
+                unit="°"
+                detail={
+                  baseline &&
+                  comparisonBlowdown !== null &&
+                  analysis.timing.globalBlowdownDeg !== null
+                    ? `${formatSigned(analysis.timing.globalBlowdownDeg - comparisonBlowdown, 1)}° vs baseline`
+                    : "Exhaust to first transfer"
+                }
+                tone={
+                  analysis.timing.globalBlowdownDeg !== null &&
+                  analysis.timing.globalBlowdownDeg <= 0
+                    ? "warning"
+                    : "neutral"
+                }
+              />
+              <Metric
+                label="Inlet to transfer"
+                value={formatSigned(primaryTransfer?.valveMarginDeg, 1)}
+                unit="°"
+                detail={
+                  primaryTransfer?.valveRelationship === "overlap"
+                    ? "Positive overlap"
+                    : primaryTransfer?.valveRelationship === "gap"
+                      ? "Negative value is a gap"
+                      : "Rotary induction only"
+                }
+              />
+            </div>
 
-          <div className="metric-ribbon">
-            <Metric
-              label="Displacement"
-              value={formatNumber(analysis.displacementCc, 1)}
-              unit="cc"
-              detail="Geometric swept volume"
-            />
-            <Metric
-              label="Exhaust duration"
-              value={formatNumber(analysis.exhaust?.durationDeg, 1)}
-              unit="°"
-              detail={
-                analysis.exhaust?.durationMs === null ||
-                analysis.exhaust?.durationMs === undefined
-                  ? "Add RPM for elapsed time"
-                  : `${formatNumber(analysis.exhaust.durationMs, 2)} ms at set RPM`
-              }
-              tone="accent"
-            />
-            <Metric
-              label="Global blowdown"
-              value={formatNumber(analysis.timing.globalBlowdownDeg, 1)}
-              unit="°"
-              detail={
-                baseline &&
-                comparisonBlowdown !== null &&
-                analysis.timing.globalBlowdownDeg !== null
-                  ? `${formatSigned(analysis.timing.globalBlowdownDeg - comparisonBlowdown, 1)}° vs baseline`
-                  : "Exhaust to first transfer opening"
-              }
-              tone={
-                analysis.timing.globalBlowdownDeg !== null &&
-                analysis.timing.globalBlowdownDeg <= 0
-                  ? "warning"
-                  : "neutral"
-              }
-            />
-            <Metric
-              label="Trapped compression"
-              value={formatNumber(analysis.compression.trappedRatio, 2)}
-              unit=":1"
-              detail={
-                baseline &&
-                comparisonTrapped !== null &&
-                analysis.compression.trappedRatio !== null
-                  ? `${formatSigned(analysis.compression.trappedRatio - comparisonTrapped, 2)} vs baseline`
-                  : "From exhaust closure volume"
-              }
-            />
-            <Metric
-              label="Minimum squish"
-              value={formatNumber(analysis.squish.minimumGapMm, 2)}
-              unit="mm"
-              detail={`Range ${formatNumber(analysis.squish.gapRangeMm, 2)} mm`}
-              tone={analysis.squish.belowManufacturerMinimum ? "warning" : "neutral"}
-            />
-          </div>
-
-          <section className="diagram-section card-dark">
+            <section className="diagram-section card-dark" id="timing-map">
             <SectionHeading
-              eyebrow="Crankshaft cycle"
               title="360° timing map"
-              detail="TDC is at the top. Angles increase clockwise. Select an arc to inspect it."
+              detail="TDC is at the top and angles increase clockwise. Select a phase below the dial for exact values."
               action={
                 <div className="diagram-toggles">
                   <label>
                     <input
                       type="checkbox"
                       checked={project.presentation.showAnalysisOverlays}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        noteEdit();
                         setProject((current) => ({
                           ...current,
                           presentation: {
                             ...current.presentation,
                             showAnalysisOverlays: event.target.checked,
                           },
-                        }))
-                      }
+                        }));
+                      }}
                     />
                     Analysis arcs
                   </label>
@@ -1335,44 +1624,116 @@ export function EngineWorkbench() {
                     <input
                       type="checkbox"
                       checked={project.presentation.showReferenceLabels}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        noteEdit();
                         setProject((current) => ({
                           ...current,
                           presentation: {
                             ...current.presentation,
                             showReferenceLabels: event.target.checked,
                           },
-                        }))
-                      }
+                        }));
+                      }}
                     />
                     Event markers
                   </label>
                 </div>
               }
             />
-            <TimingDial
-              phases={timingPhases}
-              markers={timingMarkers}
-              selectedId={selectedArc}
-              onSelect={(id) => setSelectedArc((current) => (current === id ? null : id))}
-              ariaLabel={`Timing diagram for ${project.name}`}
-              style={{ border: 0, padding: 0, boxShadow: "none" }}
-            />
+            <div className="timing-workspace">
+              <TimingDial
+                className="timing-dial"
+                phases={timingPhases}
+                markers={timingMarkers}
+                selectedId={selectedArc}
+                onSelect={(id) => setSelectedArc((current) => (current === id ? null : id))}
+                ariaLabel={`Timing diagram for ${project.name}`}
+              />
+              <aside className="phase-inspector" aria-live="polite">
+                {selectedTimingPhase ? (
+                  <>
+                    <div className="phase-inspector-heading">
+                      <span
+                        className="phase-inspector-colour"
+                        style={{ background: selectedTimingPhase.colour }}
+                        aria-hidden="true"
+                      />
+                      <div>
+                        <strong>{selectedTimingPhase.label}</strong>
+                        <span>{selectedTimingPhase.category}</span>
+                      </div>
+                    </div>
+                    <dl>
+                      <div>
+                        <dt>Opens</dt>
+                        <dd>{formatNumber(normaliseAngle(selectedTimingPhase.start), 1)}°</dd>
+                      </div>
+                      <div>
+                        <dt>Closes</dt>
+                        <dd>{formatNumber(normaliseAngle(selectedTimingPhase.end), 1)}°</dd>
+                      </div>
+                      <div>
+                        <dt>Duration</dt>
+                        <dd>{formatNumber(clockwiseDuration(selectedTimingPhase.start, selectedTimingPhase.end), 1)}°</dd>
+                      </div>
+                    </dl>
+                    {project.ports.some((port) => port.id === selectedTimingPhase.id) ? (
+                      <button
+                        className="button-secondary"
+                        type="button"
+                        onClick={() => revealPortEditor(selectedTimingPhase.id)}
+                      >
+                        Edit measurements
+                      </button>
+                    ) : null}
+                    <button className="text-button" type="button" onClick={() => setSelectedArc(null)}>
+                      Clear selection
+                    </button>
+                  </>
+                ) : selectedTimingMarker ? (
+                  <>
+                    <strong>{selectedTimingMarker.label}</strong>
+                    <p>{formatNumber(normaliseAngle(selectedTimingMarker.angle), 1)}° crank angle</p>
+                    <button className="text-button" type="button" onClick={() => setSelectedArc(null)}>
+                      Clear selection
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <strong>Inspect a phase</strong>
+                    <p>Select a labelled row below the dial to read its opening, closing and duration.</p>
+                  </>
+                )}
+              </aside>
+            </div>
             <p className="geometric-boundary">
               Overlap indicates simultaneous geometric opening only. It does not by
               itself predict flow direction, pressure behaviour, power or safety.
             </p>
           </section>
+          </div>
 
-          <section className="result-section">
+          <header className="mobile-results-context">
+            <span>Calculated results</span>
+            <h1>{project.name || "Untitled engine"}</h1>
+          </header>
+
+          <nav className="result-navigation" aria-label="Result sections">
+            <a href="#timing-results">Timing</a>
+            <a href="#head-results">Compression & squish</a>
+            <a href="#flow-results">Time-area</a>
+            <a href="#methodology">Method</a>
+          </nav>
+
+          <div className="analysis-detail">
+
+          <section className="result-section" id="timing-results">
             <SectionHeading
-              eyebrow="Relationships"
               title="Timing interactions"
               detail="Phase margins are more informative than a universal inlet-to-transfer ratio."
             />
             <div className="relation-grid">
               <article className="relation-card">
-                <span className="relation-index">A</span>
                 <div>
                   <span className="relation-label">Exhaust to transfers</span>
                   <strong>
@@ -1386,7 +1747,6 @@ export function EngineWorkbench() {
                 </div>
               </article>
               <article className="relation-card">
-                <span className="relation-index">B</span>
                 <div>
                   <span className="relation-label">Rotary inlet to transfers</span>
                   <strong>
@@ -1407,7 +1767,6 @@ export function EngineWorkbench() {
                 </div>
               </article>
               <article className="relation-card">
-                <span className="relation-index">C</span>
                 <div>
                   <span className="relation-label">Simultaneous opening</span>
                   <strong>
@@ -1417,7 +1776,6 @@ export function EngineWorkbench() {
                 </div>
               </article>
               <article className="relation-card">
-                <span className="relation-index">D</span>
                 <div>
                   <span className="relation-label">Transfer staging</span>
                   <strong>
@@ -1467,17 +1825,15 @@ export function EngineWorkbench() {
 
           <section className="result-section card-light">
             <SectionHeading
-              eyebrow="Event data"
               title="Port and inlet timing"
               detail="All displayed values are derived from the authoritative input shown for each event."
             />
             <PortTimingTable analysis={analysis} />
           </section>
 
-          <section className="result-section split-results">
+          <section className="result-section split-results" id="head-results">
             <article className="result-card">
               <SectionHeading
-                eyebrow="Combustion chamber"
                 title="Compression"
                 detail="Geometric and exhaust-closure-based ratios use the same measured clearance volume."
               />
@@ -1543,7 +1899,6 @@ export function EngineWorkbench() {
 
             <article className="result-card">
               <SectionHeading
-                eyebrow="Cylinder head"
                 title="Squish geometry"
                 detail="Four-point gap statistics reveal minimum clearance and assembly asymmetry."
               />
@@ -1585,9 +1940,8 @@ export function EngineWorkbench() {
             </article>
           </section>
 
-          <section className="result-section card-light">
+          <section className="result-section card-light" id="flow-results">
             <SectionHeading
-              eyebrow="Geometric flow window"
               title="Time-area"
               detail="Idealised rectangular projected area integrated over crank angle at the selected RPM."
             />
@@ -1645,7 +1999,6 @@ export function EngineWorkbench() {
           {scenarioEffects.length ? (
             <section className="result-section">
               <SectionHeading
-                eyebrow="Sensitivity"
                 title="Individual what-if effects"
                 detail="Each entered change is evaluated independently against the current configuration."
               />
@@ -1678,9 +2031,8 @@ export function EngineWorkbench() {
             </section>
           ) : null}
 
-          <section className="result-section methodology-section">
+          <section className="result-section methodology-section" id="methodology">
             <SectionHeading
-              eyebrow="Interpretation contract"
               title="What the workbench can and cannot say"
               detail="Recommendations are deliberately separated by evidence level."
             />
@@ -1767,7 +2119,7 @@ export function EngineWorkbench() {
           </section>
 
           {analysis.diagnostics.length ? (
-            <section className="diagnostic-section" aria-label="Model diagnostics">
+            <section className="diagnostic-section" id="model-notes" aria-label="Model diagnostics">
               <h2>Model notes</h2>
               <ul>
                 {analysis.diagnostics.map((diagnostic) => (
@@ -1787,6 +2139,7 @@ export function EngineWorkbench() {
               storage is used in this MVP.
             </p>
           </footer>
+          </div>
         </section>
       </main>
     </div>
