@@ -185,6 +185,6 @@
 - [x] 13.3 Define explicit desktop behaviour for local persistence, clear-data, JSON and SVG export, print, and a canonical HTTPS share link without transmitting project content
 - [x] 13.4 Add a native Windows lockfile build that produces x64 installer and portable executables, SHA-256 checksums, and a source-linked build manifest
 - [x] 13.5 Add automated desktop security tests for Node isolation, protocol traversal, CSP, permissions, navigation, external links, archive loading, fuse state, deterministic calculation, and local persistence
-- [ ] 13.6 Run the native Windows smoke test against the portable and installed application, including offline local loading, a known calculation, persistence, clean shutdown, installation, and uninstall
-- [ ] 13.7 Record exact artefact hashes, Windows runner, architecture, source commit, dependency-audit result, smoke evidence, and signing status
+- [x] 13.6 Run the native Windows smoke test against the portable and installed application, including offline local loading, a known calculation, persistence, clean shutdown, installation, and uninstall
+- [x] 13.7 Record exact artefact hashes, Windows runner, architecture, source commit, dependency-audit result, smoke evidence, and signing status
 - [x] 13.8 Document unsigned SmartScreen behaviour and require verified Authenticode publisher identity before any public Windows promotion

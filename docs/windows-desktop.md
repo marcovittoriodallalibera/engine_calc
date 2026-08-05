@@ -81,6 +81,18 @@ The package verifier launches the actual `win-unpacked` application, the portabl
 
 The machine-readable record binds application version, source commit, native runner, Node, Electron and electron-builder versions, artefact names, byte sizes, hashes, fuse state, smoke evidence, installation result and signing status. An executable without this matching record is an unverified build.
 
+## Verified internal candidate
+
+[GitHub Actions run 31044034676](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31044034676) completed successfully on 5 August 2026 for source commit `6172a3b6d225417f06d9c001921010d1258ba37b`.
+
+- Native job: `92435062574`, `windows-latest`, success
+- Artefact: `phase-360-windows-x64-6172a3b6d225417f06d9c001921010d1258ba37b`
+- Artefact ID: `8945782800`
+- GitHub archive digest: `sha256:572dd7e282fd0921268153a64cbcc7d0cc5f291d55393fe9de8ca616a70af21d`
+- Authenticode expectation and result: `NotSigned`
+
+The artefact contains the installer, portable executable, individual SHA-256 checksums, machine-readable verification manifest, hardened-fuse record and separate smoke records for unpacked, portable and installed execution. It is a verified internal candidate. It is not eligible for trusted public promotion until a future native build has a valid Authenticode signature from the expected publisher.
+
 ## Checksum verification
 
 On Windows PowerShell:

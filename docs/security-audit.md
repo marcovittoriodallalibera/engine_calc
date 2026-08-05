@@ -4,7 +4,7 @@ Audit date: 5 August 2026
 
 ## Scope
 
-This review covers the Phase 360 browser application, its project import and local persistence boundary, the Cloudflare Worker response policy, tracked source and dependency metadata, and the proposed Windows desktop packaging boundary. It is a source and dependency audit, not a penetration test or an assurance certification.
+This review covers the Phase 360 browser application, its project import and local persistence boundary, the Cloudflare Worker response policy, tracked source and dependency metadata, and the implemented Windows desktop packaging boundary. It is a source and dependency audit with native package smoke evidence, not a penetration test or an assurance certification.
 
 ## Remediated findings
 
@@ -23,6 +23,13 @@ This review covers the Phase 360 browser application, its project import and loc
 - The desktop CSP denies remote connections, inline scripts, evaluation, objects, forms, frames, workers and media. Sanitised clipboard write is the only permission exception and is scoped to the packaged workbench for the explicit Share action.
 - The packaging configuration enables embedded ASAR integrity validation, loads application code only from ASAR, disables run-as-Node, Node option and inspect inputs, disables extra `file` privileges, and retains WebAssembly trap handlers. Automated verification reads the final executable fuse wire rather than trusting configuration alone.
 
+## Native Windows verification evidence
+
+- [GitHub Actions run 31044034676](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31044034676) completed successfully on the `windows-latest` runner for source commit `6172a3b6d225417f06d9c001921010d1258ba37b`.
+- Job `92435062574` passed the dependency audit, complete test suite, native x64 package build, fuse inspection, unpacked smoke, portable smoke, per-user installation, installed smoke and uninstall check.
+- Retained artefact `phase-360-windows-x64-6172a3b6d225417f06d9c001921010d1258ba37b`, artefact ID `8945782800`, has GitHub archive digest `sha256:572dd7e282fd0921268153a64cbcc7d0cc5f291d55393fe9de8ca616a70af21d`.
+- The retained `SHA256SUMS.txt` and `windows-verification.json` bind the individual installer and portable executable hashes, byte sizes, architecture, toolchain, smoke records, fuse record and `NotSigned` Authenticode status to the same commit.
+
 ## Positive controls
 
 - Project JSON is limited to 48,000 bytes, reconstructed from recognised fields and bounded to 12 port groups.
@@ -36,9 +43,9 @@ This review covers the Phase 360 browser application, its project import and loc
 
 - Browser project data is intentionally stored in plain text local storage. It can be read by software with access to the browser profile or by a future same-origin script vulnerability. Sensitive projects should be explicitly exported and cleared after use.
 - The server-rendered application currently needs inline bootstrap scripts, so the web Content Security Policy retains `script-src 'unsafe-inline'`. No exploitable injection sink was found, but a future nonce or hash integration would provide stronger defence in depth.
-- The source-level desktop boundary and a local macOS ARM64 runtime smoke test are verified. That smoke proves custom-origin rendering, Node isolation, CSP, remote-request and popup blocking, permission denial, the 51 mm stroke, 97 mm rod and 33-degree deterministic reference, project-format round trip, and persistence across reload. It does not verify the Windows executable.
+- The native Windows evidence verifies the packaged x64 candidate and the local macOS ARM64 smoke remains useful secondary implementation evidence. Compatibility outside the recorded Windows x64 runner is not claimed.
 - A Windows build without an Authenticode certificate is technically runnable but remains unsigned and may trigger Microsoft SmartScreen. Every artefact must at least ship with a SHA-256 checksum. Public distribution should require a valid Authenticode signature.
-- A Windows executable becomes a verified internal candidate only after the native Windows workflow records the exact source commit, final hashes, x64 application header, fuse wire, three packaged smoke results, installation and uninstall result, and Authenticode status. A cross-build or a successful local renderer test is insufficient.
+- The verified Windows executable is an internal candidate, not a trusted public release. A future public build must repeat the native checks and additionally record a valid Authenticode signature from the expected publisher.
 
 ## Verification commands
 
@@ -49,4 +56,4 @@ npm run desktop:smoke
 git diff --check
 ```
 
-The Windows executable additionally requires `scripts/verify-windows-package.ps1` on the native Windows output before it can be described as verified.
+The Windows executable additionally requires `scripts/verify-windows-package.ps1` on the native Windows output before it can be described as verified. The evidence above records the first successful native execution of that gate.
