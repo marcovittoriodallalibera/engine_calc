@@ -68,6 +68,21 @@ test("server-renders the complete calculator shell", async () => {
   assert.match(html, /Road expansion/);
   assert.match(html, /Race expansion/);
   assert.match(html, /Engine character estimate/);
+  assert.match(html, /Transmission/);
+  assert.match(html, /Drive pinion/);
+  assert.match(html, /Driven gear/);
+  assert.match(html, /Cluster pinion/);
+  assert.match(html, /Gear wheel/);
+  assert.match(html, /aria-label="1st gear cluster pinion teeth"/);
+  assert.match(html, /aria-label="4th gear gear wheel teeth"/);
+  assert.match(html, /aria-label="Number of transmission gears"/);
+  assert.match(html, /Rolling circumference/);
+  assert.match(html, /Transmission and road speed/);
+  assert.match(html, /Road speed, km\/h/);
+  assert.match(html, /Engine speed, RPM/);
+  assert.match(html, /aria-label="Scrollable transmission chart"/);
+  assert.match(html, /Transmission ratios and theoretical road speed by gear/);
+  assert.match(html, /Transmission source/);
   assert.match(html, /Rotary inlet opening area/);
   assert.match(html, /Specific time-area across RPM/);
   assert.match(html, /Character signature/);
@@ -112,6 +127,7 @@ test("renders accessible controls and explicit interpretation limits", async () 
   assert.match(html, /tendencies, not torque, power or a safe engine-speed limit/i);
   assert.match(html, /not a dynamic pressure or detonation prediction/);
   assert.match(html, /No universal safe squish target is applied/);
+  assert.match(html, /does not predict an achievable maximum speed/i);
 });
 
 test("keeps character graph values visible in the print report", async () => {
@@ -129,4 +145,7 @@ test("keeps character graph values visible in the print report", async () => {
     printStyles,
     /\.chart-data-disclosure:not\(\[open\]\)\s*>\s*\.table-scroll/su,
   );
+  assert.match(printStyles, /\.gearing-results\s*\{[^}]*break-before:\s*page;/su);
+  assert.match(printStyles, /\.gearing-chart-frame\s*\{[^}]*margin-top:/su);
+  assert.match(printStyles, /\.gearing-chart\s*\{[^}]*min-width:\s*0;/su);
 });

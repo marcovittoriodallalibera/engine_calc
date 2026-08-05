@@ -16,6 +16,7 @@ import TimingDial, {
 import {
   ENGINE_CHARACTER_PROFILES,
   evaluateCompressionScenario,
+  type TransmissionResult,
 } from "@/lib/engine";
 import {
   analyseProject,
@@ -40,6 +41,7 @@ import {
   type CharacterProfile,
   type PortDraft,
   type PortSourceMode,
+  type TransmissionGearCount,
 } from "@/lib/project/model";
 
 const sourceOptions: Array<{ value: PortSourceMode; label: string }> = [
@@ -170,6 +172,14 @@ function sourceLabel(mode: PortSourceMode): string {
   return sourceOptions.find((option) => option.value === mode)?.label ?? mode;
 }
 
+const transmissionColours = [
+  "#b83c1e",
+  "#1f7663",
+  "#236e9a",
+  "#70459a",
+  "#7a5a00",
+];
+
 function downloadText(contents: string, mimeType: string, filename: string): void {
   const blob = new Blob([contents], { type: mimeType });
   const url = URL.createObjectURL(blob);
@@ -182,6 +192,7 @@ function downloadText(contents: string, mimeType: string, filename: string): voi
 
 interface NumberFieldProps {
   label: string;
+  inputAriaLabel?: string;
   value: string;
   onChange: (value: string) => void;
   unit?: string;
@@ -197,6 +208,7 @@ interface NumberFieldProps {
 
 function NumberField({
   label,
+  inputAriaLabel,
   value,
   onChange,
   unit,
@@ -260,6 +272,7 @@ function NumberField({
         <input
           type="text"
           inputMode="decimal"
+          aria-label={inputAriaLabel}
           value={value}
           disabled={disabled}
           aria-invalid={invalid}
@@ -357,6 +370,12 @@ function MethodologyDetailsContent() {
           upper-speed language; it does not create an output or dyno curve.
         </p>
         <p>
+          Transmission reduction is primary driven teeth divided by drive-pinion
+          teeth, multiplied by each gear-wheel to cluster-pinion ratio. The road
+          speed conversion uses the entered loaded rolling circumference. The
+          resulting straight lines are kinematic, not an achievable-speed model.
+        </p>
+        <p>
           Geometric compression uses full displacement. Trapped compression
           uses only the swept volume from exhaust closure to TDC. Raising the
           exhaust roof can therefore reduce trapped compression while leaving
@@ -420,6 +439,13 @@ function MethodologyDetailsContent() {
           rel="noreferrer"
         >
           SIP-BFA kit-specific squish guidance
+        </a>
+        <a
+          href="https://www.sip-scootershop.com/download/article/1/pdf/fa6fa8d4-75db-48e7-8d72-31c6952120a1/Gearbox%2BTechnology.pdf%3FcontentType%3Dapplication-pdf"
+          target="_blank"
+          rel="noreferrer"
+        >
+          SIP gearbox ratio and speed methodology
         </a>
       </div>
     </>
@@ -1303,6 +1329,296 @@ function CharacterSignature({
   );
 }
 
+function TransmissionChart({
+  result,
+  referenceRpm,
+}: {
+  result: TransmissionResult;
+  referenceRpm: number | null;
+}) {
+  const width = 780;
+  const height = 390;
+  const margin = { top: 28, right: 34, bottom: 62, left: 72 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const rawMaximumSpeed = Math.max(
+    10,
+    ...result.gears.map((gear) => gear.speedAtMaximumRpmKmh),
+  );
+  const maximumSpeed = Math.ceil((rawMaximumSpeed * 1.08) / 10) * 10;
+  const x = (speedKmh: number) =>
+    margin.left + (speedKmh / maximumSpeed) * plotWidth;
+  const y = (rpm: number) =>
+    margin.top + plotHeight - (rpm / result.maximumRpm) * plotHeight;
+  const speedTicks = Array.from({ length: 6 }, (_, index) =>
+    (maximumSpeed * index) / 5,
+  );
+  const rpmTicks = Array.from({ length: 6 }, (_, index) =>
+    (result.maximumRpm * index) / 5,
+  );
+  const visibleReferenceRpm =
+    referenceRpm !== null &&
+    referenceRpm > 0 &&
+    referenceRpm <= result.maximumRpm
+      ? referenceRpm
+      : null;
+
+  return (
+    <figure className="gearing-chart-frame">
+      <div
+        className="gearing-chart-scroll"
+        tabIndex={0}
+        aria-label="Scrollable transmission chart"
+      >
+        <svg
+          className="character-chart gearing-chart"
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          aria-labelledby="gearing-chart-title gearing-chart-description"
+        >
+        <title id="gearing-chart-title">
+          Theoretical engine speed against road speed for each gear
+        </title>
+        <desc id="gearing-chart-description">
+          Road speed in kilometres per hour is on the horizontal axis. Engine
+          speed in revolutions per minute is on the vertical axis. Each straight
+          line represents one configured gear.
+        </desc>
+        {rpmTicks.map((tick) => (
+          <g key={`rpm-${tick}`}>
+            <line
+              className="chart-guide"
+              x1={margin.left}
+              y1={y(tick)}
+              x2={width - margin.right}
+              y2={y(tick)}
+            />
+            <text x={margin.left - 12} y={y(tick) + 4} textAnchor="end">
+              {formatNumber(tick, 0)}
+            </text>
+          </g>
+        ))}
+        {speedTicks.map((tick) => (
+          <g key={`speed-${tick}`}>
+            <line
+              className="chart-guide"
+              x1={x(tick)}
+              y1={margin.top}
+              x2={x(tick)}
+              y2={height - margin.bottom}
+            />
+            <text
+              x={x(tick)}
+              y={height - margin.bottom + 24}
+              textAnchor="middle"
+            >
+              {formatNumber(tick, 0)}
+            </text>
+          </g>
+        ))}
+        {visibleReferenceRpm !== null ? (
+          <g className="gearing-reference-line">
+            <line
+              x1={margin.left}
+              y1={y(visibleReferenceRpm)}
+              x2={width - margin.right}
+              y2={y(visibleReferenceRpm)}
+            />
+            <text
+              x={width - margin.right - 4}
+              y={y(visibleReferenceRpm) - 7}
+              textAnchor="end"
+            >
+              Current {formatNumber(visibleReferenceRpm, 0)} RPM
+            </text>
+          </g>
+        ) : null}
+        {result.gears.map((gear, index) => {
+          const colour = transmissionColours[index];
+          const labelFraction = 0.58 + index * 0.075;
+          const labelRpm = result.maximumRpm * labelFraction;
+          const labelSpeed = gear.speedAtMaximumRpmKmh * labelFraction;
+          return (
+            <g key={gear.id}>
+              <line
+                className="gearing-series-line"
+                x1={x(0)}
+                y1={y(0)}
+                x2={x(gear.speedAtMaximumRpmKmh)}
+                y2={y(result.maximumRpm)}
+                style={{ stroke: colour }}
+              />
+              <text
+                className="gearing-series-label"
+                x={x(labelSpeed) + 7}
+                y={y(labelRpm) - 5}
+                style={{ fill: colour }}
+              >
+                {gear.gearNumber}
+              </text>
+            </g>
+          );
+        })}
+        <text
+          className="chart-axis-label"
+          x={margin.left + plotWidth / 2}
+          y={height - 10}
+          textAnchor="middle"
+        >
+          Road speed, km/h
+        </text>
+        <text
+          className="chart-axis-label"
+          transform={`translate(18 ${margin.top + plotHeight / 2}) rotate(-90)`}
+          textAnchor="middle"
+        >
+          Engine speed, RPM
+        </text>
+        </svg>
+      </div>
+      <figcaption>
+        <div className="gearing-legend" aria-label="Gear line key">
+          {result.gears.map((gear, index) => (
+            <span key={gear.id}>
+              <i
+                aria-hidden="true"
+                style={{ background: transmissionColours[index] }}
+              />
+              {gear.label}
+            </span>
+          ))}
+        </div>
+      </figcaption>
+    </figure>
+  );
+}
+
+function TransmissionResults({
+  analysis,
+  project,
+}: {
+  analysis: EngineProjectAnalysis;
+  project: EngineProjectDraft;
+}) {
+  if (!analysis.transmission.enabled) return null;
+  const result = analysis.transmission.result;
+  const referenceRpm = parseLocaleNumber(project.geometry.rpm);
+
+  return (
+    <section className="result-section gearing-results" id="gearing-results">
+      <SectionHeading
+        title="Transmission and road speed"
+        detail="Deterministic gearing from entered tooth counts and measured rolling circumference. Speed is theoretical."
+      />
+      {result ? (
+        <>
+          <div className="result-stat-grid gearing-stat-grid">
+            <Metric
+              label="Primary reduction"
+              value={formatNumber(result.primaryRatio, 3)}
+              unit=":1"
+              detail={`${project.transmission.primaryDrivePinionTeeth}/${project.transmission.primaryDrivenGearTeeth} teeth`}
+            />
+            <Metric
+              label="Top-gear reduction"
+              value={formatNumber(result.gears.at(-1)?.gearRatio, 3)}
+              unit=":1"
+              detail="Gear wheel ÷ cluster pinion"
+            />
+            <Metric
+              label="Overall top ratio"
+              value={formatNumber(result.gears.at(-1)?.overallReduction, 3)}
+              unit=":1"
+              detail="Primary × top gear"
+            />
+            <Metric
+              label="Highest plotted speed"
+              value={formatNumber(result.maximumSpeedKmh, 1)}
+              unit="km/h"
+              detail={`At ${formatNumber(result.maximumRpm, 0)} RPM`}
+              tone="accent"
+            />
+          </div>
+          <TransmissionChart result={result} referenceRpm={referenceRpm} />
+          <div className="table-scroll gearing-table-wrap">
+            <table className="data-table gearing-table">
+              <caption className="visually-hidden">
+                Transmission ratios and theoretical road speed by gear
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Gear</th>
+                  <th scope="col">Cluster / wheel</th>
+                  <th scope="col">Gear ratio</th>
+                  <th scope="col">Overall reduction</th>
+                  <th scope="col">km/h per 1,000 RPM</th>
+                  <th scope="col">Speed at max RPM</th>
+                  <th scope="col">RPM after upshift</th>
+                  <th scope="col">RPM drop</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.gears.map((gear, index) => (
+                  <tr key={gear.id}>
+                    <th scope="row">
+                      <span
+                        className="table-phase-dot"
+                        style={{ background: transmissionColours[index] }}
+                        aria-hidden="true"
+                      />
+                      {gear.label}
+                    </th>
+                    <td>
+                      {gear.clusterPinionTeeth} / {gear.drivenGearTeeth}
+                    </td>
+                    <td>{formatNumber(gear.gearRatio, 3)}:1</td>
+                    <td>{formatNumber(gear.overallReduction, 3)}:1</td>
+                    <td>{formatNumber(gear.speedKmhPer1000Rpm, 2)}</td>
+                    <td>{formatNumber(gear.speedAtMaximumRpmKmh, 1)} km/h</td>
+                    <td>
+                      {gear.rpmAfterUpshiftAtMaximumRpm === null
+                        ? "Not applicable"
+                        : `${formatNumber(gear.rpmAfterUpshiftAtMaximumRpm, 0)} RPM`}
+                    </td>
+                    <td>
+                      {gear.rpmDropPercent === null
+                        ? "Not applicable"
+                        : `${formatNumber(gear.rpmDropPercent, 1)}%`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {analysis.transmission.diagnostics.length ? (
+            <ul className="gearing-diagnostics">
+              {analysis.transmission.diagnostics.map((diagnostic) => (
+                <li key={diagnostic}>{diagnostic}</li>
+              ))}
+            </ul>
+          ) : null}
+          <p className="model-note gearing-boundary">
+            The graph assumes fixed ratios and the entered rolling circumference.
+            It excludes tyre deformation or growth, clutch or tyre slip,
+            transmission losses, engine load, gradient, wind and aerodynamic drag.
+            It therefore does not predict an achievable maximum speed.
+          </p>
+        </>
+      ) : (
+        <div className="character-plot-empty gearing-empty" role="status">
+          <div>
+            <h3>Complete the transmission inputs</h3>
+            <p>
+              Enter positive whole tooth counts, four or five complete gears, a
+              rolling circumference and a graph RPM limit.
+            </p>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function EngineCharacterEstimate({
   analysis,
   project,
@@ -1452,6 +1768,7 @@ export function EngineWorkbench() {
     ports: true,
     induction: true,
     character: true,
+    transmission: true,
   });
   const [reportGeneratedAt, setReportGeneratedAt] = useState(() =>
     formatGeneratedAt(new Date()),
@@ -1716,6 +2033,32 @@ export function EngineWorkbench() {
     setProject((current) => ({
       ...current,
       character: { ...current.character, [key]: value },
+    }));
+  }
+
+  function updateTransmission<
+    K extends keyof EngineProjectDraft["transmission"],
+  >(key: K, value: EngineProjectDraft["transmission"][K]) {
+    noteEdit();
+    setProject((current) => ({
+      ...current,
+      transmission: { ...current.transmission, [key]: value },
+    }));
+  }
+
+  function updateTransmissionGear(
+    index: number,
+    patch: Partial<EngineProjectDraft["transmission"]["gears"][number]>,
+  ) {
+    noteEdit();
+    setProject((current) => ({
+      ...current,
+      transmission: {
+        ...current.transmission,
+        gears: current.transmission.gears.map((gear, gearIndex) =>
+          gearIndex === index ? { ...gear, ...patch } : gear,
+        ),
+      },
     }));
   }
 
@@ -3051,6 +3394,203 @@ export function EngineWorkbench() {
               </div>
             </details>
 
+            <details
+              className="control-section transmission-control"
+              open={openPrimarySections.transmission}
+              onToggle={(event) =>
+                setPrimarySectionOpen("transmission", event.currentTarget.open)
+              }
+            >
+              <summary>
+                <span>
+                  <strong>Transmission</strong>
+                  <small>Primary, 4 or 5 gears and road speed</small>
+                </span>
+                <b className="control-summary-value">
+                  {analysis.transmission.result
+                    ? `${formatNumber(analysis.transmission.result.maximumSpeedKmh, 0)} km/h`
+                    : project.transmission.enabled
+                      ? "Incomplete"
+                      : "Off"}
+                </b>
+              </summary>
+              <div className="control-section-body">
+                <div className="toggle-row transmission-toggle-row">
+                  <label className="switch-label">
+                    <input
+                      type="checkbox"
+                      checked={project.transmission.enabled}
+                      onChange={(event) =>
+                        updateTransmission("enabled", event.target.checked)
+                      }
+                    />
+                    <span aria-hidden="true" />
+                    Include gearing analysis
+                  </label>
+                </div>
+                <p className="control-explainer">
+                  Enter the tooth counts fitted to the engine. Every displayed
+                  ratio and road-speed line is calculated from these values.
+                </p>
+                <fieldset
+                  className="transmission-fields"
+                  disabled={!project.transmission.enabled}
+                >
+                  <div className="transmission-field-group">
+                    <h3>Primary drive</h3>
+                    <div className="field-grid field-grid-2">
+                      <NumberField
+                        compact
+                        label="Drive pinion"
+                        value={project.transmission.primaryDrivePinionTeeth}
+                        unit="teeth"
+                        minimum={1}
+                        maximum={200}
+                        integer
+                        onChange={(value) =>
+                          updateTransmission("primaryDrivePinionTeeth", value)
+                        }
+                      />
+                      <NumberField
+                        compact
+                        label="Driven gear"
+                        value={project.transmission.primaryDrivenGearTeeth}
+                        unit="teeth"
+                        minimum={1}
+                        maximum={200}
+                        integer
+                        onChange={(value) =>
+                          updateTransmission("primaryDrivenGearTeeth", value)
+                        }
+                      />
+                    </div>
+                    <p className="fine-print">
+                      Primary reduction = driven gear teeth ÷ drive pinion teeth.
+                    </p>
+                  </div>
+
+                  <div className="transmission-field-group">
+                    <h3>Gearbox</h3>
+                    <div
+                      className="segmented-control segmented-control-2"
+                      aria-label="Number of transmission gears"
+                    >
+                      {[4, 5].map((count) => (
+                        <button
+                          type="button"
+                          className={
+                            project.transmission.gearCount === count
+                              ? "is-active"
+                              : ""
+                          }
+                          aria-pressed={project.transmission.gearCount === count}
+                          key={count}
+                          onClick={() =>
+                            updateTransmission(
+                              "gearCount",
+                              count as TransmissionGearCount,
+                            )
+                          }
+                        >
+                          {count} gears
+                        </button>
+                      ))}
+                    </div>
+                    <div className="gear-input-list">
+                      {project.transmission.gears
+                        .slice(0, project.transmission.gearCount)
+                        .map((gear, index) => (
+                          <div className="gear-input-row" key={gear.id}>
+                            <h4>{gear.label}</h4>
+                            <div className="field-grid field-grid-2">
+                              <NumberField
+                                compact
+                                label="Cluster pinion"
+                                inputAriaLabel={`${gear.label} cluster pinion teeth`}
+                                value={gear.clusterPinionTeeth}
+                                unit="teeth"
+                                minimum={1}
+                                maximum={200}
+                                integer
+                                onChange={(value) =>
+                                  updateTransmissionGear(index, {
+                                    clusterPinionTeeth: value,
+                                  })
+                                }
+                              />
+                              <NumberField
+                                compact
+                                label="Gear wheel"
+                                inputAriaLabel={`${gear.label} gear wheel teeth`}
+                                value={gear.drivenGearTeeth}
+                                unit="teeth"
+                                minimum={1}
+                                maximum={200}
+                                integer
+                                onChange={(value) =>
+                                  updateTransmissionGear(index, {
+                                    drivenGearTeeth: value,
+                                  })
+                                }
+                              />
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                    <p className="fine-print">
+                      Gear reduction = gear wheel teeth ÷ cluster pinion teeth.
+                    </p>
+                  </div>
+
+                  <div className="transmission-field-group">
+                    <h3>Wheel and graph</h3>
+                    <div className="field-grid field-grid-2">
+                      <NumberField
+                        compact
+                        label="Rolling circumference"
+                        value={
+                          project.transmission.wheelRollingCircumferenceMm
+                        }
+                        unit="mm"
+                        minimum={500}
+                        maximum={5000}
+                        help="Measure one loaded wheel revolution on the ground. Nominal tyre sizes can differ."
+                        onChange={(value) =>
+                          updateTransmission(
+                            "wheelRollingCircumferenceMm",
+                            value,
+                          )
+                        }
+                      />
+                      <NumberField
+                        compact
+                        label="Graph maximum"
+                        value={project.transmission.maximumRpm}
+                        unit="RPM"
+                        minimum={500}
+                        maximum={20000}
+                        integer
+                        onChange={(value) =>
+                          updateTransmission("maximumRpm", value)
+                        }
+                      />
+                    </div>
+                  </div>
+                </fieldset>
+                {analysis.transmission.result ? (
+                  <div className="inline-result transmission-inline-result">
+                    <span>Highest plotted speed</span>
+                    <strong>
+                      {formatNumber(
+                        analysis.transmission.result.maximumSpeedKmh,
+                        1,
+                      )} km/h
+                    </strong>
+                  </div>
+                ) : null}
+              </div>
+            </details>
+
             <p className="control-group-label">Advanced measurements</p>
 
             <details className="control-section">
@@ -3728,6 +4268,63 @@ export function EngineWorkbench() {
                 </div>
               </dl>
             </div>
+            <div className="print-induction-summary print-transmission-summary">
+              <h3>Transmission source</h3>
+              <dl>
+                <div>
+                  <dt>Status</dt>
+                  <dd>
+                    {project.transmission.enabled
+                      ? "Included in this report"
+                      : "Not included"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Primary teeth</dt>
+                  <dd>
+                    {project.transmission.enabled
+                      ? `${formatSourceValue(project.transmission.primaryDrivePinionTeeth, "drive")} / ${formatSourceValue(project.transmission.primaryDrivenGearTeeth, "driven")}`
+                      : "Not applicable"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Gear pairs</dt>
+                  <dd>
+                    {project.transmission.enabled
+                      ? project.transmission.gears
+                          .slice(0, project.transmission.gearCount)
+                          .map(
+                            (gear) =>
+                              `${gear.label}: ${gear.clusterPinionTeeth || "?"}/${gear.drivenGearTeeth || "?"}`,
+                          )
+                          .join("; ")
+                      : "Not applicable"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Rolling circumference</dt>
+                  <dd>
+                    {project.transmission.enabled
+                      ? formatSourceValue(
+                          project.transmission.wheelRollingCircumferenceMm,
+                          "mm",
+                        )
+                      : "Not applicable"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Graph maximum</dt>
+                  <dd>
+                    {project.transmission.enabled
+                      ? formatSourceValue(
+                          project.transmission.maximumRpm,
+                          "RPM",
+                        )
+                      : "Not applicable"}
+                  </dd>
+                </div>
+              </dl>
+            </div>
           </section>
           </div>
 
@@ -3744,6 +4341,9 @@ export function EngineWorkbench() {
             <a href="#head-results">Compression & squish</a>
             <a href="#flow-results">Time-area</a>
             <a href="#character-results">Character</a>
+            {analysis.transmission.enabled ? (
+              <a href="#gearing-results">Gearing</a>
+            ) : null}
             <a href="#diagnostic-results">Diagnostics</a>
             <a href="#methodology">Method</a>
           </nav>
@@ -4231,6 +4831,8 @@ export function EngineWorkbench() {
           </section>
 
           <EngineCharacterEstimate analysis={analysis} project={project} />
+
+          <TransmissionResults analysis={analysis} project={project} />
 
           <DiagnosticLevels analysis={analysis} />
 

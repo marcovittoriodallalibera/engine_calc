@@ -9,8 +9,8 @@
 
 ## 2. Canonical Project Model
 
-- [ ] 2.1 Complete the schema-version 5 engine project model, stable entity identifiers, report identity, port categories, induction modes, desired rotary timing, single manual component-arc authority, clearance-volume and squish-band sources, optional rectangular port profiles, comparison configuration, and diagnostic metadata
-- [ ] 2.2 Complete bounded validation for project names, geometry, bore, volume components, squish readings, port collections and area profiles, arc-sizing rotary diameter, desired rotary duration, manual component authority, non-positive and over-circumference complementary results, uncertainty, RPM, comparison data, diagnostic references, and presentation preferences
+- [ ] 2.1 Complete the schema-version 6 engine project model, stable entity identifiers, report identity, port categories, induction modes, desired rotary timing, single manual component-arc authority, clearance-volume and squish-band sources, optional rectangular port profiles, comparison configuration, diagnostic metadata, and optional authoritative transmission configuration
+- [ ] 2.2 Complete bounded validation for project names, geometry, bore, volume components, squish readings, port collections and area profiles, arc-sizing rotary diameter, desired rotary duration, manual component authority, non-positive and over-circumference complementary results, uncertainty, RPM, comparison data, diagnostic references, transmission enablement, four- or five-gear structure, whole tooth counts, wheel rolling circumference, transmission maximum RPM, and presentation preferences
 - [x] 2.3 Implement structured valid, unavailable, and invalid result types so expected user-data problems never become `NaN` or magic zero values
 - [x] 2.4 Define stable warning codes, severities, affected-entity references, parameters, and message keys for deterministic and interpretive notices
 - [x] 2.5 Implement canonical angle, radian, millimetre, numeric-tolerance, and presentation-rounding helpers
@@ -18,6 +18,7 @@
 - [x] 2.7 Introduce the legacy schema version 2 dual rotary-source model and schema version 3 report identity, sanitised canonical reconstruction, version 1 and 2 migration, and legacy local-storage fallback without treating persisted derived values as authority
 - [x] 2.8 Introduce schema version 4 desired rotary timing plus single manual component authority, ensure the complementary arc is derived rather than persisted, and add deterministic version 1, 2, and 3 migrations while preserving timing-only legacy projects without fabricated geometry
 - [ ] 2.9 Introduce schema version 5 for rotary area source and common axial width, bounded physical uncertainties, diagnostic profile and reference-set version, and character-graph RPM range; migrate versions 1 to 4 with profile `none`, preserve recognised constant-area input, and invent no measurements or bounds
+- [ ] 2.10 Introduce schema version 6 for optional transmission authority; migrate versions 1 to 5 with transmission disabled, preserve every recognised legacy field, populate no primary teeth, gear teeth, wheel circumference, ratio, or road-speed result, and retain five stable blank gear rows for later four- or five-speed editing
 
 ## 3. Engine Geometry Kernel
 
@@ -130,7 +131,7 @@
 - [x] 9.4 Implement bounded, atomic JSON import that preserves the current project on malformed, oversized, unsupported, or semantically invalid input
 - [x] 9.5 Implement URL-safe fragment encoding and decoding, documented link-size limits, copy/share actions, and JSON fallback for projects that exceed the limit
 - [ ] 9.6 Implement SVG export from the shared presentation model with visible tracks, selected overlays, orientation, legend, accessible description, and unavailable-event disclosure
-- [x] 9.7 Implement an A4 print stylesheet and printable report containing editable project identity, authoritative geometry and source measurements, vector diagram, event and metric tables, comparison, uncertainty, diagnostic levels, warnings, assumptions, and generation date
+- [x] 9.7 Implement an A4 print stylesheet and printable report containing editable project identity, authoritative geometry and source measurements, vector timing diagram, event and metric tables, comparison, uncertainty, diagnostic levels, warnings, assumptions, and generation date
 - [x] 9.8 Add action feedback that confirms completed save, share, import, and export operations without changing source data or physical-verification status
 - [ ] 9.9 Add persistence and portability tests for restoration, unavailable storage, corrupt local state, schema versions, import limits, fragment round trips, long-link fallback, SVG content, and print structure
 - [x] 9.10 Persist the legacy schema version 2 rotary source authority and schema version 3 report identity, gate save, export, share, and print on valid authoritative state, and normalise legacy schema version 1 and 2 projects without changing engine timing
@@ -139,6 +140,7 @@
 - [x] 9.13 Add schema-version-4 storage and portable migration from versions 1, 2, and 3, including arc-authoritative reconstruction, timing-only legacy preservation, deterministic crank-component selection, and schema-version-3 report preservation
 - [ ] 9.14 Add model, transition, storage, JSON, fragment, and UI tests for each solve direction, full-precision authority switching, migration precedence, invalid complement boundaries, and proof that derived fields never become persisted authority
 - [ ] 9.15 Add schema-version-5 persistence, migration, storage, JSON, fragment, and report tests for profile and reference version, area source and common width, stated bounds, RPM sweep, unsupported reference sets, and proof that diagnostics and graph series remain derived
+- [x] 9.16 Add schema-version-6 persistence, legacy-key fallback, JSON, fragment, and report tests for disabled migration, manually entered four- and five-gear authority, wheel circumference, maximum RPM, and proof that ratios, road speeds, shift results, and graph series remain derived
 
 ## 10. Product Hardening and Verification
 
@@ -155,7 +157,7 @@
 ## 11. Documentation and Deployment
 
 - [x] 11.1 Write a British English README covering local development, quality commands, architecture boundaries, static deployment, and OpenSpec workflow
-- [x] 11.2 Add user-facing methodology and measurement documentation for geometry assumptions, port references and profiles, rotary timing, compression, squish, time-area, comparison, uncertainty, blowdown, overlap, diagnostic levels, and excluded predictions
+- [x] 11.2 Add user-facing methodology and measurement documentation for geometry assumptions, port references and profiles, rotary timing, compression, squish, time-area, comparison, uncertainty, blowdown, overlap, diagnostic levels, transmission tooth conventions, wheel rolling circumference, theoretical road speed, and excluded predictions
 - [x] 11.3 Document the project JSON schema, compatibility policy, privacy boundary, share-link limits, and recovery from unsupported or corrupt data
 - [ ] 11.4 Configure an immutable static preview deployment with the correct repository base path and no backend project storage
 - [ ] 11.5 Run the full CI, production preview, browser smoke, accessibility, import/export, print, and mathematical acceptance suite against the deployed artefact
@@ -164,3 +166,14 @@
 - [x] 11.8 Replace legacy phase-anchor documentation with desired timing, arc-sizing diameter, one manual component, calculated complement, exact circumference tolerance, full-cycle warning, and invalid-result policy
 - [x] 11.9 Document schema-version-4 migration precedence and timing-only recovery for legacy projects without fabricating diameter or component geometry
 - [ ] 11.10 Document profile catalogue sources and versions, separate inlet-closing and complete-blowdown interpretation, rotary overlap-area measurement and exclusions, bounded uncertainty, Engine character estimate limits, and schema-version-5 migration
+- [x] 11.11 Document manual primary and gearbox tooth entry, loaded-wheel rolling-circumference measurement, gearing formulas, speed-versus-RPM axes, theoretical-road-speed exclusions, and schema-version-6 migration
+
+## 12. Transmission and Road-Speed Analysis
+
+- [x] 12.1 Implement a framework-independent transmission kernel for primary, per-gear, and overall reductions, wheel RPM, theoretical road speed, inverse engine RPM, speed per 1,000 RPM, maximum-RPM speed, adjacent-upshift RPM, and percentage RPM drop
+- [x] 12.2 Validate positive whole primary and gear tooth counts, exactly four or five ordered active gears, positive bounded wheel rolling circumference, and bounded graph maximum RPM without rounding or silently swapping driving and driven values
+- [x] 12.3 Build the optional Transmission editor with stable gear identities, four- or five-gear selection, explicit primary driving and driven labels, explicit cluster-pinion and driven-wheel labels, manually entered tooth counts, authoritative loaded-wheel measurement guidance, manually entered circumference, and real-time valid-state calculation
+- [x] 12.4 Render a responsive graph with road speed in kilometres per hour on X and engine RPM on Y, one labelled and non-colour-distinguished line per gear, selected maximum-RPM endpoints, and a semantic table containing every plotted and calculated value
+- [x] 12.5 Add non-blocking progression diagnostics and repeat the geometric-only boundary that road-speed results exclude tyre growth or slip, clutch slip, drivetrain loss, load, drag, gradient, power, acceleration, and the ability to reach selected RPM
+- [x] 12.6 Include authoritative transmission inputs, calculated ratios, speed-versus-RPM graph, equivalent table, units, and vehicle-dynamics boundary in the A4 print report while omitting interactive-only controls
+- [ ] 12.7 Add analytic, round-trip, invalid-boundary, manual-entry, four- and five-gear, progression-warning, semantic-equivalence, server-render, responsive, accessibility, print, migration, and no-top-speed-claim tests

@@ -1,10 +1,12 @@
-export const PROJECT_SCHEMA_VERSION = 5 as const;
-export const PROJECT_STORAGE_KEY = "phase360.project.v5";
+export const PROJECT_SCHEMA_VERSION = 6 as const;
+export const PROJECT_STORAGE_KEY = "phase360.project.v6";
+export const LEGACY_SCHEMA_5_PROJECT_STORAGE_KEY = "phase360.project.v5";
 export const LEGACY_SCHEMA_4_PROJECT_STORAGE_KEY = "phase360.project.v4";
 export const LEGACY_SCHEMA_3_PROJECT_STORAGE_KEY = "phase360.project.v3";
 export const LEGACY_SCHEMA_2_PROJECT_STORAGE_KEY = "phase360.project.v2";
 export const LEGACY_PROJECT_STORAGE_KEY = "phase360.project.v1";
 export const LEGACY_PROJECT_STORAGE_KEYS = [
+  LEGACY_SCHEMA_5_PROJECT_STORAGE_KEY,
   LEGACY_SCHEMA_4_PROJECT_STORAGE_KEY,
   LEGACY_SCHEMA_3_PROJECT_STORAGE_KEY,
   LEGACY_SCHEMA_2_PROJECT_STORAGE_KEY,
@@ -37,6 +39,14 @@ export type CharacterProfile =
   | "sport-box"
   | "road-expansion"
   | "race-expansion";
+export type TransmissionGearCount = 4 | 5;
+
+export interface TransmissionGearDraft {
+  id: string;
+  label: string;
+  clusterPinionTeeth: string;
+  drivenGearTeeth: string;
+}
 
 export interface PortDraft {
   id: string;
@@ -88,6 +98,15 @@ export interface EngineProjectDraft {
     rpmMinimum: string;
     rpmMaximum: string;
     rpmStep: string;
+  };
+  transmission: {
+    enabled: boolean;
+    primaryDrivePinionTeeth: string;
+    primaryDrivenGearTeeth: string;
+    gearCount: TransmissionGearCount;
+    gears: TransmissionGearDraft[];
+    wheelRollingCircumferenceMm: string;
+    maximumRpm: string;
   };
   compression: {
     volumeMode: "measured-total" | "component-breakdown";
@@ -205,6 +224,46 @@ export const demonstrationProject: EngineProjectDraft = {
     rpmMaximum: "11000",
     rpmStep: "500",
   },
+  transmission: {
+    enabled: true,
+    primaryDrivePinionTeeth: "27",
+    primaryDrivenGearTeeth: "69",
+    gearCount: 4,
+    gears: [
+      {
+        id: "gear-1",
+        label: "1st gear",
+        clusterPinionTeeth: "10",
+        drivenGearTeeth: "58",
+      },
+      {
+        id: "gear-2",
+        label: "2nd gear",
+        clusterPinionTeeth: "14",
+        drivenGearTeeth: "54",
+      },
+      {
+        id: "gear-3",
+        label: "3rd gear",
+        clusterPinionTeeth: "18",
+        drivenGearTeeth: "50",
+      },
+      {
+        id: "gear-4",
+        label: "4th gear",
+        clusterPinionTeeth: "22",
+        drivenGearTeeth: "46",
+      },
+      {
+        id: "gear-5",
+        label: "5th gear",
+        clusterPinionTeeth: "",
+        drivenGearTeeth: "",
+      },
+    ],
+    wheelRollingCircumferenceMm: "1235",
+    maximumRpm: "11000",
+  },
   compression: {
     volumeMode: "measured-total",
     clearanceVolumeCc: "12.4",
@@ -284,6 +343,34 @@ function isOptionalNonNegativeNumberText(
   return parsed !== null && parsed >= 0;
 }
 
+function isPositiveIntegerText(value: unknown, maximum = 200): value is string {
+  if (!isText(value, 16)) return false;
+  const parsed = parseLocaleNumber(value);
+  return (
+    parsed !== null &&
+    Number.isInteger(parsed) &&
+    parsed > 0 &&
+    parsed <= maximum
+  );
+}
+
+function emptyTransmissionDraft(): EngineProjectDraft["transmission"] {
+  return {
+    enabled: false,
+    primaryDrivePinionTeeth: "",
+    primaryDrivenGearTeeth: "",
+    gearCount: 4,
+    gears: Array.from({ length: 5 }, (_, index) => ({
+      id: `gear-${index + 1}`,
+      label: `${index + 1}${index === 0 ? "st" : index === 1 ? "nd" : index === 2 ? "rd" : "th"} gear`,
+      clusterPinionTeeth: "",
+      drivenGearTeeth: "",
+    })),
+    wheelRollingCircumferenceMm: "",
+    maximumRpm: "10000",
+  };
+}
+
 function isBoolean(value: unknown): value is boolean {
   return typeof value === "boolean";
 }
@@ -350,6 +437,7 @@ export function validateProjectDocument(value: unknown): ProjectValidation {
     value.schemaVersion !== 2 &&
     value.schemaVersion !== 3 &&
     value.schemaVersion !== 4 &&
+    value.schemaVersion !== 5 &&
     value.schemaVersion !== PROJECT_SCHEMA_VERSION
   ) {
     return {
@@ -365,6 +453,7 @@ export function validateProjectDocument(value: unknown): ProjectValidation {
     return { ok: false, message: "Project name is missing or too long." };
   }
   const schemaVersion = value.schemaVersion;
+  const supportsV5Analysis = schemaVersion >= 5;
   const report =
     schemaVersion >= 3 && isRecord(value.report) ? value.report : null;
   if (
@@ -421,34 +510,34 @@ export function validateProjectDocument(value: unknown): ProjectValidation {
     return { ok: false, message: "Induction configuration is invalid." };
   }
   const legacyEffectiveWindowAreaMm2 =
-    schemaVersion < PROJECT_SCHEMA_VERSION
+    !supportsV5Analysis
       ? value.induction.effectiveWindowAreaMm2 ?? ""
       : "";
   const areaSource =
-    schemaVersion === PROJECT_SCHEMA_VERSION
+    supportsV5Analysis
       ? value.induction.areaSource
       : typeof legacyEffectiveWindowAreaMm2 === "string" &&
           legacyEffectiveWindowAreaMm2.trim() !== ""
         ? "constant-area"
         : "cylindrical-overlap";
   const effectiveWindowAreaMm2 =
-    schemaVersion === PROJECT_SCHEMA_VERSION
+    supportsV5Analysis
       ? value.induction.effectiveWindowAreaMm2
       : legacyEffectiveWindowAreaMm2;
   const commonAxialOverlapWidthMm =
-    schemaVersion === PROJECT_SCHEMA_VERSION
+    supportsV5Analysis
       ? value.induction.commonAxialOverlapWidthMm
       : "";
   const crankshaftDiameterUncertaintyMm =
-    schemaVersion === PROJECT_SCHEMA_VERSION
+    supportsV5Analysis
       ? value.induction.crankshaftDiameterUncertaintyMm ?? ""
       : "";
   const measuredArcUncertaintyMm =
-    schemaVersion === PROJECT_SCHEMA_VERSION
+    supportsV5Analysis
       ? value.induction.measuredArcUncertaintyMm ?? ""
       : "";
   const commonAxialOverlapWidthUncertaintyMm =
-    schemaVersion === PROJECT_SCHEMA_VERSION
+    supportsV5Analysis
       ? value.induction.commonAxialOverlapWidthUncertaintyMm ?? ""
       : "";
   if (
@@ -615,7 +704,7 @@ export function validateProjectDocument(value: unknown): ProjectValidation {
     return { ok: false, message: "Compression, squish or display data is missing." };
   }
   const character =
-    schemaVersion === PROJECT_SCHEMA_VERSION && isRecord(value.character)
+    supportsV5Analysis && isRecord(value.character)
       ? value.character
       : null;
   const characterProfile = character === null ? "none" : character.profile;
@@ -654,6 +743,99 @@ export function validateProjectDocument(value: unknown): ProjectValidation {
       message: "The engine-character RPM sweep is invalid or too large.",
     };
   }
+  const transmission =
+    schemaVersion >= 6 && isRecord(value.transmission)
+      ? value.transmission
+      : null;
+  if (schemaVersion >= 6) {
+    if (
+      transmission === null ||
+      !isBoolean(transmission.enabled) ||
+      (transmission.gearCount !== 4 && transmission.gearCount !== 5) ||
+      !isText(transmission.primaryDrivePinionTeeth, 16) ||
+      !isText(transmission.primaryDrivenGearTeeth, 16) ||
+      !isText(transmission.wheelRollingCircumferenceMm, 32) ||
+      !isText(transmission.maximumRpm, 32) ||
+      !Array.isArray(transmission.gears) ||
+      transmission.gears.length !== 5
+    ) {
+      return { ok: false, message: "Transmission configuration is invalid." };
+    }
+
+    const gearIds = new Set<string>();
+    const gearsStructurallyValid = transmission.gears.every((item) => {
+      if (!isRecord(item)) return false;
+      if (
+        !isText(item.id, 24) ||
+        item.id.trim() === "" ||
+        gearIds.has(item.id) ||
+        !isText(item.label, 32) ||
+        item.label.trim() === "" ||
+        !isText(item.clusterPinionTeeth, 16) ||
+        !isText(item.drivenGearTeeth, 16)
+      ) {
+        return false;
+      }
+      gearIds.add(item.id);
+      return true;
+    });
+    if (!gearsStructurallyValid) {
+      return { ok: false, message: "A transmission gear definition is invalid." };
+    }
+
+    if (transmission.enabled) {
+      const activeGears = transmission.gears.slice(0, transmission.gearCount);
+      const wheelCircumference = parseLocaleNumber(
+        transmission.wheelRollingCircumferenceMm,
+      );
+      const maximumRpm = parseLocaleNumber(transmission.maximumRpm);
+      if (
+        !isPositiveIntegerText(transmission.primaryDrivePinionTeeth) ||
+        !isPositiveIntegerText(transmission.primaryDrivenGearTeeth) ||
+        !activeGears.every(
+          (item) =>
+            isRecord(item) &&
+            isPositiveIntegerText(item.clusterPinionTeeth) &&
+            isPositiveIntegerText(item.drivenGearTeeth),
+        ) ||
+        wheelCircumference === null ||
+        wheelCircumference < 500 ||
+        wheelCircumference > 5_000 ||
+        maximumRpm === null ||
+        !Number.isInteger(maximumRpm) ||
+        maximumRpm < 500 ||
+        maximumRpm > 20_000
+      ) {
+        return {
+          ok: false,
+          message:
+            "Enabled transmission data requires whole tooth counts, a plausible rolling circumference and 500 to 20,000 RPM.",
+        };
+      }
+    }
+  }
+  const migratedTransmission =
+    transmission === null
+      ? emptyTransmissionDraft()
+      : {
+          enabled: transmission.enabled as boolean,
+          primaryDrivePinionTeeth:
+            transmission.primaryDrivePinionTeeth as string,
+          primaryDrivenGearTeeth:
+            transmission.primaryDrivenGearTeeth as string,
+          gearCount: transmission.gearCount as TransmissionGearCount,
+          gears: (transmission.gears as Array<Record<string, unknown>>).map(
+            (item) => ({
+              id: item.id as string,
+              label: item.label as string,
+              clusterPinionTeeth: item.clusterPinionTeeth as string,
+              drivenGearTeeth: item.drivenGearTeeth as string,
+            }),
+          ),
+          wheelRollingCircumferenceMm:
+            transmission.wheelRollingCircumferenceMm as string,
+          maximumRpm: transmission.maximumRpm as string,
+        };
   const compression = value.compression;
   const squish = value.squish;
   const presentation = value.presentation;
@@ -763,6 +945,7 @@ export function validateProjectDocument(value: unknown): ProjectValidation {
         rpmMaximum: characterRpmMaximum as string,
         rpmStep: characterRpmStep as string,
       },
+      transmission: migratedTransmission,
       compression: {
         volumeMode: compression.volumeMode as EngineProjectDraft["compression"]["volumeMode"],
         clearanceVolumeCc: compression.clearanceVolumeCc as string,

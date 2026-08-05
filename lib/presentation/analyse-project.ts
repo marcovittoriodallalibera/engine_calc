@@ -1,5 +1,6 @@
 import {
   circularIntervalOverlap,
+  calculateTransmission,
   crankAnglesFromTdcTravel,
   degreesToArcLength,
   degreesAtRpmToMilliseconds,
@@ -26,6 +27,7 @@ import {
   type EngineCharacterResult,
   type LinearAngleSegment,
   type SymmetricPortTiming,
+  type TransmissionResult,
 } from "../engine/index.ts";
 import {
   PROFILE_REFERENCE_SET_VERSION,
@@ -306,6 +308,11 @@ export interface CylinderLiftAnalysis {
 
 export interface EngineProjectAnalysis extends EngineProjectAnalysisCore {
   cylinderLift: CylinderLiftAnalysis;
+  transmission: {
+    enabled: boolean;
+    result: TransmissionResult | null;
+    diagnostics: string[];
+  };
 }
 
 const portColours: Record<PortDraft["kind"], string> = {
@@ -2017,6 +2024,44 @@ function metricDelta(
   return current === null || baseline === null ? null : current - baseline;
 }
 
+function analyseTransmission(
+  project: EngineProjectDraft,
+): EngineProjectAnalysis["transmission"] {
+  if (!project.transmission.enabled) {
+    return { enabled: false, result: null, diagnostics: [] };
+  }
+
+  const result = calculateTransmission({
+    primaryDrivePinionTeeth:
+      parseLocaleNumber(project.transmission.primaryDrivePinionTeeth) ??
+      Number.NaN,
+    primaryDrivenGearTeeth:
+      parseLocaleNumber(project.transmission.primaryDrivenGearTeeth) ??
+      Number.NaN,
+    wheelRollingCircumferenceMm:
+      parseLocaleNumber(project.transmission.wheelRollingCircumferenceMm) ??
+      Number.NaN,
+    maximumRpm:
+      parseLocaleNumber(project.transmission.maximumRpm) ?? Number.NaN,
+    gears: project.transmission.gears
+      .slice(0, project.transmission.gearCount)
+      .map((gear) => ({
+        id: gear.id,
+        label: gear.label,
+        clusterPinionTeeth:
+          parseLocaleNumber(gear.clusterPinionTeeth) ?? Number.NaN,
+        drivenGearTeeth:
+          parseLocaleNumber(gear.drivenGearTeeth) ?? Number.NaN,
+      })),
+  });
+
+  return {
+    enabled: true,
+    result: result.value,
+    diagnostics: result.diagnostics.map((diagnostic) => diagnostic.message),
+  };
+}
+
 export function analyseProject(project: EngineProjectDraft): EngineProjectAnalysis {
   const baseline = analyseProjectCore(project, 0);
   const rawLift = project.compression.baseSpacerThicknessMm;
@@ -2060,6 +2105,7 @@ export function analyseProject(project: EngineProjectDraft): EngineProjectAnalys
     }];
   });
   const extraDiagnostics: string[] = [];
+  const transmission = analyseTransmission(project);
 
   if (!hasValidNumber) {
     extraDiagnostics.push("Cylinder lift must be a non-negative number.");
@@ -2079,6 +2125,7 @@ export function analyseProject(project: EngineProjectDraft): EngineProjectAnalys
 
   return {
     ...current,
+    transmission,
     diagnostics: Array.from(new Set([...current.diagnostics, ...extraDiagnostics])),
     cylinderLift: {
       requestedThicknessMm,

@@ -151,6 +151,48 @@ Downstroke blowdown angle-area integrates exhaust area from exhaust opening to t
 
 The importance of inlet time-area has long been examined experimentally, including [SAE 670030](https://saemobilus.sae.org/papers/effect-crankcase-volume-inlet-system-delivery-ratio-two-stroke-cycle-engines-670030). Port area alone is not a performance model: [SAE 1999-01-3333](https://saemobilus.sae.org/papers/relationship-port-shape-engine-performance-two-stroke-engines-1999-01-3333) reports material relationships between transfer geometry, in-cylinder flow and engine output.
 
+## Transmission and theoretical road speed
+
+The transmission study accepts one manually entered primary pair and either four or five manually entered gearbox pairs.
+
+For primary drive pinion teeth `P`, primary driven gear teeth `C`, cluster pinion teeth `p` and the corresponding driven gear wheel teeth `g`:
+
+```text
+primary ratio = C / P
+gear ratio = g / p
+overall reduction = primary ratio * gear ratio
+wheel RPM = engine RPM / overall reduction
+```
+
+The terminology describes the direction of power transmission. The primary pinion drives the larger primary gear, and each selected cluster pinion drives its corresponding loose gear wheel.
+
+For engine speed `n`, measured wheel rolling circumference `W` in millimetres and overall reduction `R`, ideal road speed is:
+
+```text
+speed km/h = n W 60 / (R 1,000,000)
+```
+
+The graph uses the inverse relationship for each gear:
+
+```text
+engine RPM = speed km/h * R * 1,000,000 / (W 60)
+```
+
+Speed is on the horizontal axis and engine RPM is on the vertical axis. With a fixed rolling circumference and fixed tooth counts, each gear is a straight line through the origin. The entered maximum RPM sets the graph range and the common comparison point; it is not a predicted safe limit or an achievable engine speed.
+
+For an upshift made at the entered maximum RPM, the geometric engine-speed recovery and percentage drop are:
+
+```text
+RPM after upshift = maximum RPM * next overall reduction / current overall reduction
+RPM drop percent = 100 * (1 - RPM after upshift / maximum RPM)
+```
+
+The actual loaded-wheel rolling circumference is authoritative. It should be measured over one complete wheel revolution on the ground in the intended running condition. Nominal or catalogue tyre dimensions are useful starting points but can differ from the fitted value because of tyre construction, pressure, wear and load.
+
+Technical material used to check terminology and calculation examples includes the [SIP Gearbox Technology guide](https://www.sip-scootershop.com/en/download/article/1/pdf/fa6fa8d4-75db-48e7-8d72-31c6952120a1/Gearbox%2BTechnology.pdf?contentType=application-pdf), the [SIP Smallframe primary-drive table](https://www.sip-scootershop.com/en/download/article/1/pdf/dc20197c-cf8c-4336-bfdf-0836e35d2f46/%C3%9Cbersicht%2BPrim%C3%A4r%C3%BCbersetzung%2BSmallframe.pdf?contentType=application-pdf), the [VMC Smallframe five-speed kit listing](https://www.sip-scootershop.com/en/product/gearbox-kit-56-53-50-47-46-teeth-vmc-5-speed_40477000) and the [Pirelli technical tyre guide](https://tyre24.pirelli.com/moto/assets/pirelli/pdf/global/TDB/PIRELLI_TDB_2025_HR.pdf). These sources do not populate the project. The user must enter the measured or verified values for the fitted engine, wheel and gearbox.
+
+These equations describe ideal kinematics only. They exclude clutch slip, tyre slip, tyre deformation and growth, transmission losses, engine load, gradient, wind and aerodynamic drag. The plotted endpoint is therefore theoretical gearing speed, not a forecast of attainable road speed, power or torque.
+
 ## What-if effects
 
 The installed cylinder lift is evaluated as an active assembled configuration. Remaining what-if controls are evaluated independently from that current configuration:

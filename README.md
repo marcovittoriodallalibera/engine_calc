@@ -17,6 +17,9 @@ The current release is an MVP. Calculation, local persistence, portable projects
 - Geometric and trapped compression ratios, trapped swept volume and target clearance volume
 - Four-point squish statistics, central bowl band width and squish area ratio
 - Idealised rectangular port angle-area, specific time-area and downstroke blowdown time-area
+- Configurable Vespa primary and four- or five-speed gearbox reductions from editable tooth counts
+- Theoretical road speed, speed per 1,000 RPM, post-shift RPM and RPM drop for every enabled gear
+- A real-time and printable road-speed graph with speed on the horizontal axis and engine RPM on the vertical axis
 - A real-time cylinder lift study with 0.1 mm steps, per-port timing deltas, no-spacer reference markers, and recalculated blowdown, overlap, compression, squish and time-area
 - Independent what-if effects for a head gasket and exhaust-roof raise
 
@@ -27,6 +30,8 @@ All results update as soon as a valid input changes. Comma and point decimal sep
 The application calculates geometry. It does not predict gas flow, pressure waves, power, torque, combustion temperature, detonation margin or machining safety.
 
 Positive overlap means that events are geometrically open at the same crank angle. It does not establish flow direction or performance. Trapped compression is a geometric volume ratio beginning at exhaust closure, not a dynamic pressure estimate. Time-area uses idealised projected windows and excludes duct angle, edge radius, chamfer, discharge coefficient and gas dynamics.
+
+Transmission results are kinematic calculations from manually entered tooth counts and wheel circumference, not performance predictions. The graph does not show whether the engine can pull a given ratio or reach the displayed speed. It excludes clutch and tyre slip, tyre deformation and growth, transmission losses, engine load, gradient, wind and aerodynamic drag. A measured loaded-wheel rolling circumference is authoritative.
 
 No universal timing, compression or squish target is built in. Source-specific limits may be entered and compared, but physical assembly and tuning decisions require manufacturer data and direct verification.
 
@@ -55,7 +60,7 @@ npm run test:render
 
 ## Architecture
 
-- `lib/engine`: pure deterministic mathematical kernel with typed diagnostics
+- `lib/engine`: pure deterministic mathematical kernel for engine geometry and transmission kinematics, with typed diagnostics
 - `lib/project`: schema-versioned project model and browser portability helpers
 - `lib/presentation`: one project-to-results analysis path used by the interface
 - `components`: realtime workbench and accessible SVG timing dial
@@ -69,7 +74,7 @@ The domain kernel has no React, storage or browser dependencies. Derived results
 
 The latest valid project is saved to `localStorage` when available. JSON import is bounded and validated before atomic replacement. Share links encode project data in the URL fragment, which is not sent to the hosting server by normal browser requests. SVG and JSON exports are generated locally.
 
-Future transmission of project content requires a separate capability and explicit user action.
+Future network transfer of project content requires a separate capability and explicit user action.
 
 ## Documentation
 

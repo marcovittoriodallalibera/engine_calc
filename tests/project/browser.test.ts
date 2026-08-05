@@ -8,6 +8,7 @@ import {
   LEGACY_SCHEMA_2_PROJECT_STORAGE_KEY,
   LEGACY_SCHEMA_3_PROJECT_STORAGE_KEY,
   LEGACY_SCHEMA_4_PROJECT_STORAGE_KEY,
+  LEGACY_SCHEMA_5_PROJECT_STORAGE_KEY,
   PROJECT_SCHEMA_VERSION,
   PROJECT_STORAGE_KEY,
   cloneDemonstrationProject,
@@ -62,6 +63,7 @@ function legacyProject(version: 1 | 2 | 3 | 4): Record<string, unknown> {
   const induction = project.induction as Record<string, unknown>;
   project.schemaVersion = version;
   delete project.character;
+  delete project.transmission;
   delete induction.areaSource;
   delete induction.commonAxialOverlapWidthMm;
   induction.effectiveWindowAreaMm2 = "125";
@@ -107,12 +109,14 @@ test("saves, restores and clears the authoritative project", () => {
 
   storage.values.set(LEGACY_SCHEMA_3_PROJECT_STORAGE_KEY, "legacy-3");
   storage.values.set(LEGACY_SCHEMA_4_PROJECT_STORAGE_KEY, "legacy-4");
+  storage.values.set(LEGACY_SCHEMA_5_PROJECT_STORAGE_KEY, "legacy-5");
   storage.values.set(LEGACY_SCHEMA_2_PROJECT_STORAGE_KEY, "legacy-2");
   storage.values.set(LEGACY_PROJECT_STORAGE_KEY, "legacy-1");
   assert.equal(clearProjectFromStorage(storage).ok, true);
   assert.equal(storage.values.has(PROJECT_STORAGE_KEY), false);
   assert.equal(storage.values.has(LEGACY_SCHEMA_3_PROJECT_STORAGE_KEY), false);
   assert.equal(storage.values.has(LEGACY_SCHEMA_4_PROJECT_STORAGE_KEY), false);
+  assert.equal(storage.values.has(LEGACY_SCHEMA_5_PROJECT_STORAGE_KEY), false);
   assert.equal(storage.values.has(LEGACY_SCHEMA_2_PROJECT_STORAGE_KEY), false);
   assert.equal(storage.values.has(LEGACY_PROJECT_STORAGE_KEY), false);
 });
@@ -168,6 +172,31 @@ test("prefers and migrates the schema version 4 storage key", () => {
     assert.equal(restored.project.character.profile, "none");
     assert.equal(restored.project.induction.areaSource, "constant-area");
     assert.equal(restored.project.induction.effectiveWindowAreaMm2, "125");
+  }
+});
+
+test("prefers schema version 5 and preserves its analysis fields", () => {
+  const storage = new FakeStorage();
+  const schema5 = cloneDemonstrationProject() as unknown as Record<
+    string,
+    unknown
+  >;
+  schema5.schemaVersion = 5;
+  schema5.name = "Schema 5 project";
+  delete schema5.transmission;
+  const schema4 = legacyProject(4);
+  schema4.name = "Schema 4 project";
+  storage.values.set(LEGACY_SCHEMA_5_PROJECT_STORAGE_KEY, JSON.stringify(schema5));
+  storage.values.set(LEGACY_SCHEMA_4_PROJECT_STORAGE_KEY, JSON.stringify(schema4));
+
+  const restored = loadProjectFromStorage(storage);
+
+  assert.equal(restored.ok, true);
+  if (restored.ok && restored.project) {
+    assert.equal(restored.project.name, "Schema 5 project");
+    assert.equal(restored.project.character.profile, "sport-box");
+    assert.equal(restored.project.induction.areaSource, "cylindrical-overlap");
+    assert.equal(restored.project.transmission.enabled, false);
   }
 });
 

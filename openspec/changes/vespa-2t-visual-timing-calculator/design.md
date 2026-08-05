@@ -1,8 +1,8 @@
 ## Context
 
-See `proposal.md` for motivation and the five capability specs for observable behaviour. The repository now contains a working client-only MVP and a private deployed preview. This OpenSpec change remains unarchived because the task list still distinguishes implemented calculator behaviour from open hardening, browser, accessibility, export, comparison, and physical-verification work.
+See `proposal.md` for motivation and the six capability specs for observable behaviour. The repository now contains a working client-only MVP and a private deployed preview. This OpenSpec change remains unarchived because the task list still distinguishes implemented calculator behaviour from open hardening, browser, accessibility, export, comparison, and physical-verification work.
 
-The calculation is deterministic, small, and privacy-sensitive only in the sense that users may label or retain their engine configurations. It does not need a server to produce results. The difficult parts are numeric correctness near dead-centre boundaries, circular intervals that cross 0 degrees, maintaining one authoritative source among linked representations, integrating geometric port area over crank angle, keeping compression-volume sign conventions auditable, untrusted portable project data, and making a dense radial visualisation understandable without colour or pointer interaction.
+The calculation is deterministic, small, and privacy-sensitive only in the sense that users may label or retain their engine configurations. It does not need a server to produce results. The difficult parts are numeric correctness near dead-centre boundaries, circular intervals that cross 0 degrees, maintaining one authoritative source among linked representations, integrating geometric port area over crank angle, keeping compression-volume sign conventions auditable, distinguishing driving from driven transmission teeth, preserving measured wheel circumference as authority, handling untrusted portable project data, and making dense radial and Cartesian visualisations understandable without colour or pointer interaction.
 
 The initial page and document language is British English. User-facing strings will be isolated so an Italian translation can be added without changing domain behaviour.
 
@@ -17,6 +17,7 @@ The initial page and document language is British English. User-facing strings w
 - Make contextual interpretation explicitly dependent on one user-selected engine-use and exhaust profile rather than inferring intent from timing values.
 - Make invalid, incomplete, uncertain, and measured data explicit instead of coercing it into apparently precise results.
 - Add transparent geometric calculations for displacement, mean piston speed, compression, squish, rectangular-port time-area, and configuration deltas without converting them into performance claims.
+- Add a transparent optional transmission calculation from editable Vespa primary and four- or five-gear tooth pairs, measured wheel rolling circumference, and selected maximum RPM without converting theoretical gearing speed into a vehicle-performance claim.
 - Separate deterministic calculations, documented configuration-specific references, and tuning hypotheses in every recommendation surface.
 - Deliver the first release as a static browser application that remains useful without accounts, project APIs, or server-side calculation.
 - Preserve extension points for non-rectangular measured port profiles, localisation, dynamic simulation, and a future persistence service without designing those features now.
@@ -24,6 +25,7 @@ The initial page and document language is British English. User-facing strings w
 **Non-Goals:**
 
 - Do not build a CFD model, gas-dynamic pressure model, combustion model, exhaust-pipe calculator, absolute torque or power predictor, synthetic dyno curve, or machining-safety evaluator.
+- Do not predict reachable top speed, acceleration, road load, shift time, tyre slip or growth, clutch slip, drivetrain loss, aerodynamic drag, gradient effects, or whether the engine can pull the selected RPM in any gear.
 - Do not infer dynamic compression pressure, mean squish velocity, detonation margin, thermal loading, safe clearance, or an optimum combination from geometric inputs alone.
 - Do not model lateral cylinder or gudgeon-pin offset in the standard kernel. Expert measured events cover non-symmetric real-world observations in this release.
 - Do not infer fixed timing for reed induction.
@@ -54,8 +56,9 @@ The implementation will be split into these conceptual layers:
 3. Geometry kernel: forward and inverse centred slider-crank calculations and uncertainty envelopes.
 4. Circular timing kernel: normalised events, union, intersection, gap, sweep, and ordering operations.
 5. Performance metrics: displacement, piston speed, compression, squish geometry, rectangular-port area, cylindrical rotary-overlap area, angle-area, and specific time-area.
-6. Analysis: blowdown, staging, signed intake-to-transfer margin, separate inlet closing, overlap, triple overlap, elapsed time, uncertainty intervals, configuration deltas, profile-qualified diagnostics, and typed warnings.
-7. Presentation model: formatted labels, diagram tracks, area and RPM series, qualitative character annotations, table rows, diagnostic levels, export data, and accessibility summaries.
+6. Transmission kernel: primary and per-gear reductions, wheel-circumference-based theoretical road speed, adjacent-upshift RPM drop, progression warnings, and bounded graph endpoints.
+7. Analysis: blowdown, staging, signed intake-to-transfer margin, separate inlet closing, overlap, triple overlap, elapsed time, uncertainty intervals, configuration deltas, profile-qualified diagnostics, and typed warnings.
+8. Presentation model: formatted labels, diagram tracks, area, engine-character and transmission series, qualitative character annotations, table rows, diagnostic levels, export data, and accessibility summaries.
 
 The domain core will not import React, browser storage APIs, D3, or formatting code. The same core functions will drive the live workbench, table, share-link reconstruction, SVG export, and print output.
 
@@ -162,7 +165,7 @@ Alternatives considered:
 
 ### 7. Project state managed by a reducer with stable entity identifiers
 
-One reducer will manage authoritative project edits, port collection changes, induction selection, rotary-area source and measurements, bounded uncertainties, diagnostic profile and reference-set version, character-graph RPM range, compression and squish inputs, an optional comparison configuration, preferences, reset, import, and restoration. Transfer groups receive stable generated identifiers so renaming or reordering does not remount unrelated fields or change analysis references.
+One reducer will manage authoritative project edits, port collection changes, induction selection, rotary-area source and measurements, bounded uncertainties, diagnostic profile and reference-set version, character-graph RPM range, optional transmission enablement, primary and gear tooth pairs, four- or five-gear selection, wheel rolling circumference, transmission maximum RPM, compression and squish inputs, an optional comparison configuration, preferences, reset, import, and restoration. Transfer groups and transmission gear rows receive stable identifiers so renaming, switching between four and five gears, or reordering other collections does not remount unaffected fields or change analysis references.
 
 Derived calculation state is computed from the validated project and is never dispatched back into the reducer. Component-local state is limited to raw input text, focus, disclosure state, and transient action feedback.
 
@@ -174,17 +177,19 @@ The presentation layer will produce labelled tracks and overlay segments from th
 
 The semantic HTML table is the detailed non-visual representation and contains every datum expressed by the diagram. Colour is never the only distinction: opening and closing markers, patterns, labels, and legends differentiate events and overlays. Pointer tooltips are supplementary and must also be available through focus or visible table content.
 
+The transmission view uses a separate Cartesian SVG derived from the same transmission presentation result. Road speed is the horizontal axis, engine RPM is the vertical axis, and each configured gear has a labelled line style and matching semantic table row. The graph does not reuse the 360-degree timing coordinate system and does not become a second calculation path.
+
 Alternative considered: embedding extensive per-path ARIA text would create a noisy accessibility tree and still be less usable than the structured table.
 
 ### 9. Client-side persistence and portable schema
 
-The current bounded `EngineProject` document uses `schemaVersion: 5`. Explicit project validation covers local data, imported JSON, and share fragments before atomic replacement of the current project. Limits cover document bytes, number of port groups, label length, project code, a real ISO project date, three bounded engine-detail lines, numeric ranges, and nesting depth implied by the fixed schema. Version 4 stores desired rotary opening and closing angles plus the selected calculation mode. Arc-sizing mode additionally stores sealing-track diameter, the selected manual component, and only that component's authoritative arc. Version 5 adds rotary-area source, measured common axial overlap width when applicable, optional measurement bounds, `none`, `touring-box`, `sport-box`, `road-expansion`, or `race-expansion` with the applicable built-in reference-set version, and the requested character-graph RPM range. The complementary arc, area curve, diagnostics, character annotations, converted values, and graph series are derived and are not persisted as authority. Supported version 1, 2, 3, and 4 documents are migrated through the rules in Decisions 17 to 21 with profile `none` and no invented uncertainty. Unsupported newer versions are rejected without partial application.
+The current bounded `EngineProject` document uses `schemaVersion: 6`. Explicit project validation covers local data, imported JSON, and share fragments before atomic replacement of the current project. Limits cover document bytes, number of port groups, label length, project code, a real ISO project date, three bounded engine-detail lines, numeric ranges, fixed four- or five-gear transmission structure, and nesting depth implied by the schema. Version 4 stores desired rotary opening and closing angles plus the selected calculation mode. Arc-sizing mode additionally stores sealing-track diameter, the selected manual component, and only that component's authoritative arc. Version 5 adds rotary-area source, measured common axial overlap width when applicable, optional measurement bounds, `none`, `touring-box`, `sport-box`, `road-expansion`, or `race-expansion` with the applicable built-in reference-set version, and the requested character-graph RPM range. Version 6 adds optional transmission enablement, manually entered authoritative primary tooth counts, exactly five stable gear-row drafts with four or five active and manually entered tooth pairs, manually entered authoritative wheel rolling circumference, and a bounded graph maximum RPM. Ratios, speed values, upshift results, and transmission graph series are derived and are not persisted as authority. Supported version 1, 2, 3, 4, and 5 documents migrate through the rules in Decisions 17 to 22 with transmission disabled and without fabricated tooth counts, wheel circumference, uncertainty, or profile judgement. Unsupported newer versions are rejected without partial application.
 
 Local continuity uses `localStorage` behind a small repository interface. Storage failures are caught and exposed as non-blocking status. Future browser or backend repositories can implement the same conceptual interface without entering the domain core.
 
 Share links contain a URL-safe base64 encoding of compact schema-versioned JSON in the fragment. A conservative encoded-length cap prevents unreliable links; projects beyond it use JSON export. No server record or link-shortening service is introduced.
 
-JSON export and share links are generated from validated authoritative project data. The current SVG download serialises the live vector diagram. The dedicated A4 print view uses the same calculated presentation, adds an editable project header and authoritative input snapshot, preserves the SVG diagram as vector content, and creates a non-authoritative generation timestamp immediately before printing. Complete overlay disclosure and export-specific browser verification remain open tasks. Imported labels are rendered as text, never injected as HTML.
+JSON export and share links are generated from validated authoritative project data. The current SVG download serialises the live vector timing diagram. The dedicated A4 print view uses the same calculated presentation, adds an editable project header and authoritative input snapshot, preserves timing and transmission graphs as vector content, includes the equivalent transmission table when enabled, and creates a non-authoritative generation timestamp immediately before printing. Complete overlay disclosure and export-specific browser verification remain open tasks. Imported labels are rendered as text, never injected as HTML.
 
 Alternatives considered:
 
@@ -209,7 +214,11 @@ Unit and property-oriented tests will cover:
 - rotary timing-to-total-arc conversion, each manual-component solve direction, authority-switch invariance, non-positive complement rejection, circumference bounds, and full-cycle warnings;
 - circular crank-to-case overlap length, geometric inlet-area curves, rotary angle-area integration, common-width boundaries, and invariance under a valid manual-authority switch;
 - deterministic area-versus-angle and time-area-versus-RPM series, profile-qualified qualitative annotations, absence of torque or power outputs, and uncertainty-band crossing behaviour;
+- primary, per-gear, and overall transmission reduction identities, speed and inverse-RPM round trips, four- and five-gear configurations, adjacent-upshift RPM drop, non-taller progression warnings, and invalid whole-tooth boundaries;
+- manual transmission entry, authoritative wheel rolling circumference, speed-horizontal and RPM-vertical graph endpoints, semantic-table equivalence, and absence of reachable-top-speed or vehicle-performance claims;
 - project transitions and schema migrations, including legacy storage-key fallback, timing-only recovery, and manual-authority validation.
+
+Schema tests additionally prove that versions 1 to 5 preserve every recognised authoritative field while receiving disabled transmission analysis with no fabricated hardware or wheel measurement, and that version 6 never trusts persisted ratios, road speeds, shift results, or graph samples.
 
 Component tests will exercise labelled controls, source-mode changes, partial numeric input, warnings, table equivalence, import failures, and storage failures. Browser tests will cover responsive layouts, keyboard use, sharing, export, print styling, and supported browsers. Automated accessibility checks are supporting evidence and will be supplemented by manual keyboard and screen-reader review. SVG regression fixtures will test geometry, while screenshots test final visual presentation.
 
@@ -288,7 +297,7 @@ An optional comparison configuration is recalculated through the same kernel. Th
 
 ### 16. Cylinder lift is a reversible transform over the complete analysis
 
-The cylinder-spacer field introduced in schema version 1 remains persisted through migration to schema version 5, but the workbench promotes it from an isolated what-if card to a primary cylinder lift study. The no-spacer project remains authoritative. Analysis first resolves every port source mode to canonical roof travel, applies `liftedTravel = baselineTravel - spacerThickness`, and then recalculates the complete candidate through the same timing, interval, compression, squish, angle-area, and time-area paths.
+The cylinder-spacer field introduced in schema version 1 remains persisted through migration to schema version 6, but the workbench promotes it from an isolated what-if card to a primary cylinder lift study. The no-spacer project remains authoritative. Analysis first resolves every port source mode to canonical roof travel, applies `liftedTravel = baselineTravel - spacerThickness`, and then recalculates the complete candidate through the same timing, interval, compression, squish, angle-area, and time-area paths.
 
 This preserves angle- or duration-authoritative source values instead of rewriting them, keeps stroke, connecting-rod length, bore, rotary-valve timing, and port window geometry invariant, and exposes the non-linear degree change for each port. A positive lift also increases signed piston-below-deck position and entered squish readings by the spacer thickness and increases clearance volume by piston area multiplied by thickness. These compression consequences are explicitly conditional on the cylinder and head moving together without corrective machining.
 
@@ -320,7 +329,7 @@ The inputs must be finite. `A` and `R` must each be non-negative and their sum m
 
 For valid geometry the presentation exposes `A`, `R`, `T`, `D`, `C`, `Ltotal`, the selected manual authority and length, the read-only complementary length, both angular contributions, and source provenance. The selected manual value, not the displayed derived value, is persisted. Changing the desired timing recalculates `Ltotal` and the read-only component while leaving the user's selected physical measurement unchanged. The desired positioned event drives the diagram, overlap, margin, and rotary time-area in either calculation mode. Selecting arc sizing additionally gates save, export, share, and print on a valid diameter and component solve.
 
-Schema version 4 introduces this authority model. Version 1 direct-angle projects preserve `A` and `R`, migrate to timing-only mode, and do not receive fabricated physical geometry. For version 2 or 3 projects whose active arc geometry and phase anchor resolve a positioned event, migration derives `A` and `R` from that event, selects the stored open crank cut-away as the deterministic manual authority, and verifies that recomputing the crankcase length reproduces the stored geometry within tolerance. Direct-angle version 2 or 3 projects preserve `A` and `R` and remain in timing-only mode; a structurally valid stored diameter and crank cut-away token may remain as inactive draft data but does not become a valid physical claim until arc sizing is selected and validated. Schema version 5 preserves the version 4 authority model and adds the fields in Decisions 18 to 21. Readers limited to version 4 reject version 5 rather than ignoring its diagnostic, uncertainty, and area-source semantics.
+Schema version 4 introduces this authority model. Version 1 direct-angle projects preserve `A` and `R`, migrate to timing-only mode, and do not receive fabricated physical geometry. For version 2 or 3 projects whose active arc geometry and phase anchor resolve a positioned event, migration derives `A` and `R` from that event, selects the stored open crank cut-away as the deterministic manual authority, and verifies that recomputing the crankcase length reproduces the stored geometry within tolerance. Direct-angle version 2 or 3 projects preserve `A` and `R` and remain in timing-only mode; a structurally valid stored diameter and crank cut-away token may remain as inactive draft data but does not become a valid physical claim until arc sizing is selected and validated. Schema version 5 preserves the version 4 authority model and adds the fields in Decisions 18 to 21. Schema version 6 preserves every recognised version 5 field and adds only the optional transmission authority in Decision 22. Older readers reject newer schemas rather than ignoring semantics they cannot reproduce.
 
 The measurement contract remains narrow: one continuous open crank cut-away, one continuous crankcase opening, true arc lengths on the sealing track, sharp idealised boundaries and a common effective diameter. Diameter, the selected manual arc, and common axial overlap width accept optional stated bounds; when no bound is supplied they remain point inputs and no uncertainty is invented. Chords, the remaining solid shoulder, multiple disconnected windows, edge radii, axial alignment beyond the measured common width, leakage, flow, structural strength and crankshaft balance are outside this calculation.
 
@@ -368,7 +377,44 @@ The view never synthesises these inputs into torque, power, brake mean effective
 
 Alternative considered: generating a normalised bell curve from timing and time-area would look familiar, but without volumetric-efficiency, pressure, exhaust-wave, combustion, friction, ignition, fuel, temperature, and calibration data it would be a cosmetic performance claim rather than a defensible calculation.
 
+### 22. Transmission analysis derives theoretical road speed from authoritative tooth pairs and rolling circumference
+
+Transmission analysis is optional and independent from the engine-timing kernel. Its authority consists of an enabled flag, primary driving-pinion teeth `Pdrive`, primary driven-gear teeth `Pdriven`, four or five ordered gear rows, wheel rolling circumference `C` in millimetres, and graph maximum engine speed `Nmax` in RPM. Each gear row contains cluster-pinion teeth `Gdrive` and driven gear-wheel teeth `Gdriven`. Tooth counts must be positive whole numbers. Enabled wheel circumference is bounded from 500 to 5,000 mm and maximum RPM from 500 to 20,000 to reject unit mistakes and unbounded graph domains without claiming those bounds describe every possible vehicle.
+
+The deterministic kernel calculates:
+
+```text
+primary reduction = Pdriven / Pdrive
+gear reduction = Gdriven / Gdrive
+overall reduction = primary reduction * gear reduction
+wheel RPM = engine RPM / overall reduction
+road speed km/h = engine RPM * C * 60 / (overall reduction * 1,000,000)
+engine RPM = road speed km/h * overall reduction * 1,000,000 / (C * 60)
+```
+
+For each gear it derives theoretical speed per 1,000 RPM and at `Nmax`. For each adjacent upshift it calculates the engine RPM after shifting at unchanged road speed and the percentage RPM drop. If a later gear is not taller than its predecessor, the valid result remains available with a warning to verify the tooth pairing. The kernel does not reorder gears or repair tooth counts.
+
+The road-speed graph plots speed on the horizontal axis and engine RPM on the vertical axis. Each gear is a straight line from zero to its speed at `Nmax`, derived from the same full-precision result used by the table. A semantic table contains the complete non-visual equivalent, including tooth pairs, ratios, speed per 1,000 RPM, maximum-RPM speed, adjacent-shift RPM, RPM drop, and units. Print uses the same graph and table presentation model.
+
+All tooth counts and wheel circumference are entered manually. Measured loaded wheel rolling circumference is the authoritative physical datum because nominal tyre size alone does not establish the installed rolling distance. The application does not infer or populate transmission hardware or rolling circumference from a model, product, or tyre-size field.
+
+The maximum-RPM speed is theoretical gearing speed, not reachable top speed. The calculation excludes loaded tyre deformation beyond the entered circumference, tyre growth, wheel and clutch slip, drivetrain compliance and loss, aerodynamic drag, gradient, mass, road load, engine torque and power, and whether the engine can attain the selected RPM in a given gear. These exclusions remain adjacent to results and in print.
+
+Schema version 6 introduces this optional transmission record. Supported version 1 to 5 projects preserve all recognised authority, receive transmission analysis disabled, and receive no populated primary teeth, gear teeth, wheel circumference, or transmission claim. Five stable blank gear rows permit a later four- or five-speed configuration without making migrated hardware assumptions. Derived reductions, road speeds, shift results, and graph samples are always regenerated.
+
+Alternatives considered:
+
+- Deriving circumference from nominal tyre notation would create false precision because installed construction, pressure, load, and wear change rolling distance.
+- Plotting road speed on the vertical axis would conflict with the requested comparison and make speed at a selected RPM harder to scan across gears.
+- Calling the highest graph endpoint top speed would imply available power and road-load modelling that the project does not contain.
+
 ## Reasoning log
+
+### 2026-08-05: Keep gearing authoritative at the tooth-pair and measured-wheel level
+
+The project stores only the exact tooth pairs and rolling circumference entered by the user, not a product name or nominal tyre size. This makes measurement authority explicit and prevents hidden hardware assumptions. Four and five active gears share five stable rows so changing the count does not destroy the fifth-gear draft or disturb existing row identity.
+
+The requested graph uses road speed on X and engine RPM on Y. Both axes come directly from the same reversible gearing equation as the table, so the chart is an inspectable view rather than a separate estimate. The highest endpoint remains theoretical speed at selected RPM because reachable top speed would additionally require torque, power, loss, drag, mass, gradient, tyre and operating-condition data.
 
 ### 2026-08-05: Replace dual rotary timing sources with a constrained complement solver
 
@@ -388,6 +434,9 @@ The requested true effective inlet area is consequently named geometric rotary o
 - [Geometric rotary overlap area can be mistaken for discharge-corrected effective flow area] -> Use the geometric name, display the measured common-width and shared-diameter assumptions, and repeat excluded flow effects beside charts and exports.
 - [A selected profile can be mistaken for a universal tuning target] -> Require explicit selection, source and version every band, keep numeric geometry primary, and make every comparison advisory or indeterminate.
 - [A qualitative character graph can be mistaken for a dyno curve] -> Plot only real geometric units, prohibit torque, power, peak, and dyno labels, and include the model boundary in the graph, table, print, and export surfaces.
+- [The fastest transmission endpoint can be mistaken for achievable top speed] -> Call it theoretical road speed at selected RPM and repeat the excluded tyre, slip, loss, load, drag, power, and reachability factors beside the graph, table, and print result.
+- [Driving and driven gear teeth can be entered in reverse] -> Name primary and gearbox components explicitly, show the resulting reductions, and warn when a later gear is not taller without silently swapping values.
+- [A nominal tyre dimension can be mistaken for the installed rolling circumference] -> Accept only a manually entered circumference and provide one-loaded-revolution measurement guidance.
 - [Bounded uncertainty can be mistaken for statistical confidence] -> Label it as propagation of stated limits, never invent probability, and invalidate rather than clip physically impossible bounds.
 - [A saved profile reference version can become unavailable] -> Recalculate geometry, withhold contextual diagnostics, and never substitute a different reference set silently.
 - [A single squish reading can hide assembly asymmetry] -> Support multiple named readings and show minimum, mean, maximum, and spread without applying an unsourced safety threshold.
@@ -401,7 +450,7 @@ The requested true effective inlet area is consequently named geometric rotary o
 - [Circular boundary bugs can corrupt overlap totals] -> Centralise all interval operations and use boundary, property, and golden tests before any chart work consumes them.
 - [Share URLs can become too long] -> Enforce a conservative cap and make versioned JSON the reliable fallback.
 - [Browser storage can be unavailable or cleared] -> Treat autosave as convenience, expose failures, and provide explicit file export.
-- [Static hosting limits future accounts or governed presets] -> Keep persistence behind an interface and add a backend only through a separately specified capability.
+- [Static hosting limits future accounts or shared project services] -> Keep persistence behind an interface and add a backend only through a separately specified capability.
 - [SVG export and live rendering can drift] -> Generate both from the same presentation model and regression-test exported fixtures.
 - [Additional dependencies increase supply-chain surface] -> Keep the runtime dependency set small, lock versions, review updates, and run dependency and build checks in CI.
 
@@ -415,7 +464,8 @@ The requested true effective inlet area is consequently named geometric rotary o
 6. Add local persistence, validated import/export, fragment sharing, print output, and production hardening.
 7. Introduce schema version 4, migrate supported version 1, 2, and 3 projects through the explicit rotary rules in Decision 17, retain timing-only analysis, and replace dual physical arc inputs with the desired-timing complement solver.
 8. Introduce schema version 5 with diagnostic profile and reference version, rotary area source and common width, stated uncertainties, and character-graph RPM range; migrate supported version 1, 2, 3, and 4 projects to profile `none` without invented bounds and keep every curve, diagnostic, and graph series derived.
-9. Deploy an immutable preview build, run mathematical, browser, accessibility, migration, authority-switch, manual measurement, diagnostic-boundary, and no-performance-claim cross-checks, then promote the same verified artefact.
+9. Introduce schema version 6 with optional manually entered authoritative transmission inputs; migrate supported version 1, 2, 3, 4, and 5 projects with transmission disabled and no invented hardware, implement the reduction and road-speed kernel, and generate the speed-horizontal and RPM-vertical graph, semantic table, and print section from one result.
+10. Deploy an immutable preview build, run mathematical, browser, accessibility, migration, authority-switch, manual measurement, transmission, print, diagnostic-boundary, and no-performance-claim cross-checks, then promote the same verified artefact.
 
 Rollback consists of redeploying the previous static artefact. The initial release has no server data migration. If a later application build cannot read a stored project schema, it must leave the stored payload intact and offer export or a clear version error rather than overwriting it.
 
@@ -425,3 +475,4 @@ Rollback consists of redeploying the previous static artefact. The initial relea
 - Italian localisation can be prioritised after the British English source catalogue and layout have been validated.
 - Confirm through physical measurement trials whether a later schema should support a remaining-solid-shoulder source, straight-chord conversion, or an independently measured crankcase-track diameter. The MVP accepts only one selected open circumferential component arc and the stated shared-diameter assumption.
 - Validate the first built-in profile reference catalogue against traceable published configurations and, separately, against physical road, pressure, flow-bench, or dyno datasets before any future calibrated performance model is proposed. This does not block the MVP's explicitly heuristic profile comparisons.
+- Cross-check manually entered tooth pairs and measured wheel circumference against the exact installed components used in physical acceptance tests.

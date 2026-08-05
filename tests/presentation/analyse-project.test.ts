@@ -20,6 +20,42 @@ test("demonstration project produces a complete integrated analysis", () => {
   assert.ok((result.compression.trappedRatio ?? 0) > 7);
   closeTo(result.squish.areaPercent, 51, 0.00001);
   assert.equal(result.ports.every((port) => port.angleAreaMm2Deg !== null), true);
+  closeTo(result.transmission.result?.primaryRatio ?? null, 69 / 27);
+  assert.equal(result.transmission.result?.gears.length, 4);
+});
+
+test("transmission results update independently from engine timing", () => {
+  const project = cloneDemonstrationProject();
+  const baseline = analyseProject(project);
+  const baselineTopSpeed = baseline.transmission.result?.maximumSpeedKmh;
+  assert.ok(baselineTopSpeed);
+
+  project.transmission.primaryDrivePinionTeeth = "24";
+  const shorterPrimary = analyseProject(project);
+  assert.ok(
+    (shorterPrimary.transmission.result?.maximumSpeedKmh ?? 0) <
+      baselineTopSpeed,
+  );
+  closeTo(
+    shorterPrimary.exhaust?.durationDeg ?? null,
+    baseline.exhaust?.durationDeg ?? 0,
+  );
+
+  project.transmission.enabled = false;
+  const disabled = analyseProject(project);
+  assert.equal(disabled.transmission.result, null);
+  assert.deepEqual(disabled.transmission.diagnostics, []);
+});
+
+test("an incomplete transmission does not invalidate other engine analysis", () => {
+  const project = cloneDemonstrationProject();
+  project.transmission.gears[1].clusterPinionTeeth = "";
+  const result = analyseProject(project);
+
+  assert.equal(result.validGeometry, true);
+  assert.equal(result.transmission.result, null);
+  assert.ok(result.transmission.diagnostics.length > 0);
+  assert.ok(result.exhaust);
 });
 
 test("desired timing and the solved arc geometry drive identical rotary analysis", () => {

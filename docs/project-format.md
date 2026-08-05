@@ -2,7 +2,7 @@
 
 ## Schema version
 
-Current portable projects are JSON objects with `schemaVersion: 5`. A document stores authoritative editable inputs, report identity and presentation preferences. It does not store derived timing, overlap, diagnostics, graph series, compression or time-area results.
+Current portable projects are JSON objects with `schemaVersion: 6`. A document stores authoritative editable inputs, report identity and presentation preferences. It does not store derived timing, overlap, diagnostics, graph series, compression, time-area or transmission results.
 
 The principal sections are:
 
@@ -14,6 +14,7 @@ geometry
 ports[]
 induction
 character
+transmission
 compression
 squish
 presentation
@@ -40,6 +41,25 @@ When every entered uncertainty range remains inside the positive physical domain
 
 The `character` section stores `none`, `touring-box`, `sport-box`, `road-expansion` or `race-expansion`, the profile reference-set version and a bounded RPM sweep. Profiles affect contextual annotations only. Calculated geometry and time-area remain invariant when the profile changes.
 
+The `transmission` section stores whether gearing analysis is enabled, the manually entered primary drive pinion and driven gear tooth counts, a `gearCount` of 4 or 5, five stable gear records, the measured wheel rolling circumference in millimetres and the graph maximum RPM. Each gear record contains a stable identifier, label, manually entered cluster pinion tooth count and driven gear wheel tooth count. Only the first `gearCount` records are active, so changing between four and five gears does not require changing the document shape.
+
+The entered tooth counts and measured rolling circumference are the only authoritative transmission inputs.
+
+```text
+transmission.enabled
+transmission.primaryDrivePinionTeeth
+transmission.primaryDrivenGearTeeth
+transmission.gearCount
+transmission.gears[5].id
+transmission.gears[5].label
+transmission.gears[5].clusterPinionTeeth
+transmission.gears[5].drivenGearTeeth
+transmission.wheelRollingCircumferenceMm
+transmission.maximumRpm
+```
+
+Primary ratio, individual gear ratio, overall reduction, speed per 1,000 RPM, theoretical speed, post-shift RPM, RPM drop and graph coordinates are all derived and are never persisted as source data. The measured loaded-wheel rolling circumference is authoritative.
+
 ## Validation boundary
 
 Imported documents are treated as untrusted data. Before replacement, the complete document is checked for:
@@ -55,6 +75,8 @@ Imported documents are treated as untrusted data. Before replacement, the comple
 - in arc-sizing mode, a positive timing-track diameter, one positive measured arc and a strictly positive calculated counterpart
 - a known rotary area source, bounded area-source measurement strings, and optional non-negative rotary measurement uncertainties
 - a supported profile identifier and a bounded RPM sweep from 500 to 20,000 RPM
+- a transmission gear count of 4 or 5 and exactly five structurally valid gear records with unique identifiers
+- when transmission analysis is enabled, positive whole tooth counts up to 200 for the primary and active gear pairs, a wheel rolling circumference from 500 to 5,000 mm, and a graph maximum from 500 to 20,000 RPM
 
 Malformed or unsupported data leaves the current project unchanged.
 
@@ -74,14 +96,16 @@ An encoded-length cap avoids creating unreliable URLs. JSON export is the fallba
 
 A project with a newer schema version is rejected with a clear version message. Future migrations must be explicit and tested. An unreadable stored payload must remain recoverable rather than being silently overwritten during a failed migration.
 
-The current reader remains backward compatible with schema versions 1, 2, 3 and 4. Version 1 documents have their missing rotary timing source normalised to `direct-angles` and receive empty optional geometry inputs. Versions 1 and 2 receive empty report metadata. Version 3 and 4 report identity is preserved.
+The current reader remains backward compatible with schema versions 1, 2, 3, 4 and 5. Version 1 documents have their missing rotary timing source normalised to `direct-angles` and receive empty optional geometry inputs. Versions 1 and 2 receive empty report metadata. Version 3 and 4 report identity is preserved.
 
 For a version 2 or 3 project whose active source was crank-and-case geometry, migration first reconstructs its effective opening and closing angles from the two historical arcs and timing anchor. It then keeps the crank cut-away as the single measured length and reproduces the former crankcase opening as a calculated value. The version 5 document strips the second persisted arc and obsolete timing anchor.
 
 Version 4 projects preserve their single measured rotary component and any historical constant-area value. They migrate with profile `none`, the documented default RPM sweep and no invented common axial width, diameter uncertainty, measured-arc uncertainty or axial-width uncertainty. A schema 5 document created before these optional fields existed is also normalised to empty uncertainty strings rather than receiving assumed values.
 
+Every schema 1 to 5 project migrates to schema 6 with transmission analysis disabled. The migration creates five stable empty gear rows, selects four active gears, and leaves the primary tooth counts, gear tooth counts and wheel rolling circumference empty. It does not infer fitted hardware from the engine geometry or project name. The dormant 10,000 RPM graph maximum is an interface default only and has no calculation effect while the transmission module is disabled.
+
 ## Privacy
 
 The MVP has no accounts, project API, cloud database or telemetry containing project measurements. Import, calculation, local save, fragment creation, JSON export and SVG export occur in the browser.
 
-Any future feature that transmits project content requires a separately specified capability and explicit user action.
+Any future feature that transfers project content over a network requires a separately specified capability and explicit user action.

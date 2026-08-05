@@ -20,6 +20,7 @@ function legacyProject(version: 1 | 2 | 3 | 4): Record<string, unknown> {
   const induction = project.induction as Record<string, unknown>;
   project.schemaVersion = version;
   delete project.character;
+  delete project.transmission;
   delete induction.areaSource;
   delete induction.commonAxialOverlapWidthMm;
   delete induction.crankshaftDiameterUncertaintyMm;
@@ -152,6 +153,8 @@ test("normalises missing optional schema 5 rotary uncertainties without inventin
     string,
     unknown
   >;
+  project.schemaVersion = 5;
+  delete project.transmission;
   const induction = project.induction as Record<string, unknown>;
   delete induction.crankshaftDiameterUncertaintyMm;
   delete induction.measuredArcUncertaintyMm;
@@ -167,7 +170,55 @@ test("normalises missing optional schema 5 rotary uncertainties without inventin
       parsed.project.induction.commonAxialOverlapWidthUncertaintyMm,
       "",
     );
+    assert.equal(parsed.project.character.profile, "sport-box");
+    assert.equal(parsed.project.induction.areaSource, "cylindrical-overlap");
+    assert.deepEqual(parsed.project.transmission, {
+      enabled: false,
+      primaryDrivePinionTeeth: "",
+      primaryDrivenGearTeeth: "",
+      gearCount: 4,
+      gears: [
+        { id: "gear-1", label: "1st gear", clusterPinionTeeth: "", drivenGearTeeth: "" },
+        { id: "gear-2", label: "2nd gear", clusterPinionTeeth: "", drivenGearTeeth: "" },
+        { id: "gear-3", label: "3rd gear", clusterPinionTeeth: "", drivenGearTeeth: "" },
+        { id: "gear-4", label: "4th gear", clusterPinionTeeth: "", drivenGearTeeth: "" },
+        { id: "gear-5", label: "5th gear", clusterPinionTeeth: "", drivenGearTeeth: "" },
+      ],
+      wheelRollingCircumferenceMm: "",
+      maximumRpm: "10000",
+    });
   }
+});
+
+test("validates four or five active gears without inventing derived values", () => {
+  const project = cloneDemonstrationProject();
+  project.transmission.gearCount = 5;
+  project.transmission.gears[4].clusterPinionTeeth = "22";
+  project.transmission.gears[4].drivenGearTeeth = "46";
+
+  const valid = validateProjectDocument(project);
+  assert.equal(valid.ok, true);
+  if (valid.ok) {
+    assert.equal(valid.project.transmission.gearCount, 5);
+    assert.equal(
+      "overallReduction" in
+        (valid.project.transmission as unknown as Record<string, unknown>),
+      false,
+    );
+  }
+
+  project.transmission.gears[4].clusterPinionTeeth = "22.5";
+  assert.equal(validateProjectDocument(project).ok, false);
+
+  project.transmission.gears[4].clusterPinionTeeth = "22";
+  project.transmission.maximumRpm = "10000.5";
+  assert.equal(validateProjectDocument(project).ok, false);
+
+  project.transmission.enabled = false;
+  project.transmission.primaryDrivePinionTeeth = "";
+  project.transmission.primaryDrivenGearTeeth = "";
+  project.transmission.wheelRollingCircumferenceMm = "";
+  assert.equal(validateProjectDocument(project).ok, true);
 });
 
 test("accepts blank or non-negative rotary uncertainties and rejects negative values", () => {

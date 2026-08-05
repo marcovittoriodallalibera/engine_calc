@@ -236,6 +236,33 @@ The workbench SHALL provide a section titled Engine character estimate that plot
 - **WHEN** a user relies on the semantic table instead of the graph
 - **THEN** the same RPM samples, geometric area or specific time-area values, uncertainty bounds, profile annotation text, and model boundaries are available without colour or pointer interaction
 
+### Requirement: Transmission editor and road-speed visualisation
+The workbench SHALL provide an optional Transmission editor in which the user manually enters primary driving-pinion and driven-gear tooth counts, selects four or five gears, manually enters cluster-pinion and driven-wheel tooth counts for each active gear, and manually enters wheel rolling circumference and graph maximum RPM. It SHALL recalculate valid reductions and road-speed results in real time. A dedicated result section SHALL show theoretical road speed on the horizontal axis and engine RPM on the vertical axis, with one distinctly labelled series per gear and an equivalent semantic table.
+
+#### Scenario: Edit a primary tooth count
+- **WHEN** the user enters a valid new primary driving-pinion or driven-gear tooth count
+- **THEN** the primary ratio, every overall ratio, every road-speed value, the graph, and the numeric table update in the same interaction cycle
+
+#### Scenario: Switch between four and five gears
+- **WHEN** the user selects four or five gears
+- **THEN** the editor, graph series, legend, and semantic table expose exactly that number of active ordered gears without remounting or renaming the retained gear rows
+
+#### Scenario: Measure the installed wheel
+- **WHEN** the user inspects wheel-circumference guidance
+- **THEN** the workbench identifies one loaded rolling revolution as the authoritative measurement and explains that the circumference must be entered manually
+
+#### Scenario: Transmission input is temporarily incomplete
+- **WHEN** one enabled transmission field contains an intermediate or invalid token
+- **THEN** that field receives an actionable validation state, the last valid graph may remain visible as stale, and unrelated timing, compression, squish, and character results remain operable
+
+#### Scenario: Transmission graph cannot be perceived
+- **WHEN** a user relies on the semantic table rather than the transmission graph
+- **THEN** the primary ratio, each gear and overall ratio, theoretical speed per 1,000 RPM, theoretical speed at maximum RPM, adjacent-shift RPM and drop, units, and vehicle-dynamics exclusions remain available without colour or pointer interaction
+
+#### Scenario: Narrow transmission layout
+- **WHEN** the viewport is narrow
+- **THEN** tooth-pair controls, source guidance, graph, legend, and table remain operable in a logical vertical order without page-level horizontal scrolling
+
 ### Requirement: Configuration comparison view
 The workbench SHALL let the user capture or load one comparison configuration, show compatible values side by side, and report signed deltas and uncertainty-range overlap without ranking either configuration.
 
