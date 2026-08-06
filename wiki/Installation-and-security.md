@@ -1,6 +1,6 @@
 # Installation and security
 
-Phase 360 0.1.0 preview 1 has passed native package verification, but it does not carry a verified publisher identity.
+Phase 360 0.1.0 preview 2 has passed native package verification, but it does not carry a verified publisher identity.
 
 ## Windows x64
 

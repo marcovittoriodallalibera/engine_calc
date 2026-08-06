@@ -270,10 +270,7 @@ export async function preparePreviewRelease({
   generatedAt = new Date().toISOString(),
 }) {
   if (!/^\d+\.\d+\.\d+$/u.test(version)) throw new Error("Version must use x.y.z format.");
-  const escapedVersion = version.replaceAll(".", "\\.");
-  if (!new RegExp(`^v${escapedVersion}-preview\\.[1-9]\\d*$`, "u").test(tag)) {
-    throw new Error(`Tag '${tag}' does not match version ${version}.`);
-  }
+  validatePreviewTag(tag, version);
   if (!/^[a-f0-9]{40}$/u.test(sourceCommit)) throw new Error("Source commit must be a full SHA-1.");
 
   await rm(outputDirectory, { recursive: true, force: true });
@@ -357,8 +354,16 @@ export async function preparePreviewRelease({
   return { evidence, outputFiles };
 }
 
+export function validatePreviewTag(tag, version) {
+  const escapedVersion = version.replaceAll(".", "\\.");
+  if (!new RegExp(`^v${escapedVersion}-preview\\.[1-9]\\d*$`, "u").test(tag)) {
+    throw new Error(`Tag '${tag}' does not match version ${version}.`);
+  }
+  return true;
+}
+
 const invokedPath = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : null;
-if (invokedPath === import.meta.url) {
+async function runCommandLine() {
   const argumentsMap = parseArguments(process.argv.slice(2));
   const required = ["input-root", "output-dir", "version", "tag", "source-commit"];
   for (const key of required) {
@@ -374,4 +379,16 @@ if (invokedPath === import.meta.url) {
   process.stdout.write(
     `Prepared ${result.outputFiles.length} verified preview release files for ${result.evidence.tag}.\n`,
   );
+}
+
+if (invokedPath === import.meta.url) {
+  runCommandLine().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    const annotation = message
+      .replaceAll("%", "%25")
+      .replaceAll("\r", "%0D")
+      .replaceAll("\n", "%0A");
+    process.stderr.write(`::error title=Preview release reconciliation failed::${annotation}\n`);
+    process.exitCode = 1;
+  });
 }

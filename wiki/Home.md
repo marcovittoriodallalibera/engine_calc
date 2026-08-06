@@ -4,8 +4,8 @@ Phase 360 is a visual calculation workbench for Vespa and other piston-controlle
 
 ## Latest verified desktop preview
 
-Current version: **0.1.0 preview 1**  
-Published: **6 August 2026**
+- Current version: **0.1.0 preview 2**
+- Published: **6 August 2026**
 
 [Download Phase 360 for Windows or macOS](Downloads)
 

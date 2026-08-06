@@ -34,12 +34,7 @@ jobs:
           package-manager-cache: false
 
       - name: Validate preview tag
-        shell: pwsh
-        run: |
-          $Version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          if ($env:GITHUB_REF_NAME -ne "v$Version-preview.1") {
-            throw "Tag does not match package version and approved preview number."
-          }
+        run: node scripts/check-preview-tag.mjs "$env:GITHUB_REF_NAME"
 
       - name: Install locked dependencies
         run: npm ci
@@ -115,8 +110,7 @@ jobs:
       - name: Validate preview tag and native runner
         shell: bash
         run: |
-          version="$(node -p "require('./package.json').version")"
-          [[ "$GITHUB_REF_NAME" == "v${version}-preview.1" ]]
+          node scripts/check-preview-tag.mjs "$GITHUB_REF_NAME"
           expected="${{ matrix.architecture }}"
           actual="$(uname -m)"
           if [[ "$expected" == "x64" ]]; then expected="x86_64"; fi
@@ -224,11 +218,13 @@ jobs:
 
       - name: Publish GitHub pre-release
         shell: bash
-        run: >-
-          gh release create "$GITHUB_REF_NAME"
-          release-assets/*
-          --repo "$GITHUB_REPOSITORY"
-          --verify-tag
-          --prerelease
-          --title "Phase 360 0.1.0 preview 1 (unsigned test build)"
-          --notes-file .github/release-notes/desktop-preview.md
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          preview_number="${GITHUB_REF_NAME##*.}"
+          gh release create "$GITHUB_REF_NAME" \
+            release-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --prerelease \
+            --title "Phase 360 ${version} preview ${preview_number} (unsigned test build)" \
+            --notes-file .github/release-notes/desktop-preview.md

@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { preparePreviewRelease } from "../../scripts/prepare-preview-release.mjs";
+import { preparePreviewRelease, validatePreviewTag } from "../../scripts/prepare-preview-release.mjs";
 
 const VERSION = "0.1.0";
 const TAG = "v0.1.0-preview.1";
@@ -194,4 +194,10 @@ test("rejects a package changed after native verification", async () => {
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("accepts numbered preview tags and rejects stable or mismatched tags", () => {
+  assert.equal(validatePreviewTag("v0.1.0-preview.2", "0.1.0"), true);
+  assert.throws(() => validatePreviewTag("v0.1.0", "0.1.0"), /does not match/u);
+  assert.throws(() => validatePreviewTag("v0.2.0-preview.1", "0.1.0"), /does not match/u);
 });

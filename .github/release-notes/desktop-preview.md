@@ -1,4 +1,4 @@
-# Phase 360 0.1.0 preview 1
+# Phase 360 desktop preview
 
 This is a verified desktop preview for evaluation and testing. It is not a trusted public release.
 
