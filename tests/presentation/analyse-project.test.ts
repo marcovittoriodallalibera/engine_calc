@@ -338,7 +338,6 @@ test("signed inlet margin uses the worst transfer and keeps closing separate", (
 
 test("the sourced Vespa overlap heuristic warns above plus five degrees", () => {
   const project = cloneDemonstrationProject();
-  project.character.profile = "none";
   project.induction.advanceBtdcDeg = "130";
   const result = analyseProject(project);
   const advisory = result.advisories.find(
@@ -347,9 +346,63 @@ test("the sourced Vespa overlap heuristic warns above plus five degrees", () => 
 
   assert.ok((result.rotary?.signedTransferMarginDeg ?? 0) > 5);
   assert.equal(advisory?.evidence, "profile-heuristic");
+  assert.equal(advisory?.claimLevel, "profile-heuristic");
+  assert.equal(
+    advisory?.evidenceSubtype,
+    "practitioner-threshold-comparison",
+  );
   assert.equal(advisory?.tone, "strong");
-  assert.match(advisory?.message ?? "", /exceeds the conservative \+5 degree/u);
+  assert.equal(advisory?.referenceSetVersion, "phase360-profile-lens-1");
+  assert.equal(advisory?.uncertaintyStatus, "bounded");
+  assert.equal(advisory?.calibration.status, "not-calibrated");
+  assert.match(advisory?.applicability ?? "", /Vespa-style/u);
+  assert.match(advisory?.message ?? "", /above the \+5 degree/u);
   assert.match(advisory?.sourceUrl ?? "", /youtube\.com/u);
+  assert.equal(advisory?.source.kind, "practitioner-guidance");
+});
+
+test("no selected profile emits no profile heuristic or character judgement", () => {
+  const project = cloneDemonstrationProject();
+  project.character.profile = "none";
+
+  const result = analyseProject(project);
+
+  assert.equal(result.character, null);
+  assert.equal(
+    result.advisories.some(
+      (advisory) => advisory.claimLevel === "profile-heuristic",
+    ),
+    false,
+  );
+  assert.ok(
+    result.advisories.some(
+      (advisory) => advisory.claimLevel === "calculated-geometry",
+    ),
+  );
+});
+
+test("an unavailable profile reference is reported without silent substitution", () => {
+  const project = cloneDemonstrationProject();
+  project.character.referenceSetVersion = "future-profile-reference";
+
+  const result = analyseProject(project);
+  const advisory = result.advisories.find(
+    (candidate) => candidate.id === "profile-reference-unavailable",
+  );
+
+  assert.equal(result.character, null);
+  assert.ok(advisory);
+  assert.equal(advisory.claimLevel, "profile-heuristic");
+  assert.equal(advisory.referenceSetVersion, "future-profile-reference");
+  assert.equal(advisory.source.version, "future-profile-reference");
+  assert.equal(advisory.uncertaintyStatus, "unavailable");
+  assert.match(advisory.message, /no profile rule or character annotation has been substituted/u);
+  assert.equal(
+    result.advisories.filter(
+      (candidate) => candidate.claimLevel === "profile-heuristic",
+    ).length,
+    1,
+  );
 });
 
 test("port uncertainty propagates through blowdown, margin and time-area bounds", () => {
@@ -486,6 +539,7 @@ test("the plus-five heuristic is indeterminate when measurement bounds cross it"
       5,
   );
   assert.equal(advisory?.tone, "caution");
+  assert.equal(advisory?.uncertaintyStatus, "indeterminate");
   assert.match(advisory?.message ?? "", /indeterminate/u);
 });
 
@@ -534,4 +588,36 @@ test("character geometry uses real area units over the bounded RPM sweep", () =>
       "measured-or-modelled",
     ]),
   );
+});
+
+test("every advisory exposes complete claim, provenance and scope metadata", () => {
+  const result = analyseProject(cloneDemonstrationProject());
+
+  assert.ok(result.advisories.length > 0);
+  for (const advisory of result.advisories) {
+    assert.equal(advisory.claimLevel, advisory.evidence);
+    assert.ok(advisory.evidenceSubtype.length > 0);
+    assert.ok(advisory.source.id.length > 0);
+    assert.ok(advisory.source.label.length > 0);
+    assert.ok(advisory.source.version.length > 0);
+    assert.equal(advisory.sourceLabel, advisory.source.label);
+    assert.equal(advisory.sourceUrl, advisory.source.url);
+    assert.ok(advisory.applicability.length > 20);
+    assert.ok(advisory.operatingScope.length > 20);
+    assert.ok(advisory.calibration.scope.length > 20);
+    assert.ok(advisory.uncertaintyStatus.length > 0);
+
+    if (advisory.claimLevel === "profile-heuristic") {
+      assert.equal(advisory.referenceSetVersion, "phase360-profile-lens-1");
+      assert.equal(advisory.calibration.status, "not-calibrated");
+    }
+    if (advisory.claimLevel === "calculated-geometry") {
+      assert.equal(advisory.referenceSetVersion, null);
+      assert.equal(advisory.calibration.status, "not-applicable");
+    }
+    if (advisory.evidenceSubtype === "idealised-geometric-model") {
+      assert.equal(advisory.calibration.status, "not-calibrated");
+      assert.match(advisory.calibration.scope, /No discharge coefficient/u);
+    }
+  }
 });

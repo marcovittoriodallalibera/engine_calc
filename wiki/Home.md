@@ -2,14 +2,14 @@
 
 Phase 360 is a visual calculation workbench for Vespa and other piston-controlled two-stroke engines. It combines port timing, rotary-valve timing, overlap diagnostics, compression and squish context, engine-character guidance, project comparison, print output and configurable transmission analysis.
 
-## Latest verified desktop preview
+## Next desktop preview candidate
 
-- Current version: **0.1.0 preview 3**
-- Published: **6 August 2026**
+- Candidate version: **0.1.1 preview 1**
+- Status: **awaiting native GitHub release verification**
 
-[Download Phase 360 for Windows or macOS](Downloads)
+[Planned Windows and macOS downloads](Downloads)
 
-> The desktop packages are verified previews, not trusted public releases. Windows packages are unsigned. macOS packages are ad-hoc signed and not notarised. Read [Installation and security](Installation-and-security) before opening a download.
+> This candidate is not yet published or verified. If the native release workflow succeeds, Windows packages will remain unsigned and macOS packages will remain ad-hoc signed and not notarised. Read [Installation and security](Installation-and-security) before opening any future download.
 
 ## Documentation
 

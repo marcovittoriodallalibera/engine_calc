@@ -1,6 +1,6 @@
 # Installation and security
 
-Phase 360 0.1.0 preview 3 has passed native package verification, but it does not carry a verified publisher identity.
+Phase 360 0.1.1 preview 1 is a release candidate awaiting native GitHub verification and publication. It must not be described as published, stable, verified or trusted until that workflow and its public assets have been checked.
 
 ## Windows x64
 
@@ -11,7 +11,7 @@ The current executables are unsigned and may trigger Microsoft SmartScreen. Veri
 PowerShell checksum example:
 
 ```powershell
-Get-FileHash .\Phase-360-Setup-0.1.0-x64.exe -Algorithm SHA256
+Get-FileHash .\Phase-360-Setup-0.1.1-x64.exe -Algorithm SHA256
 ```
 
 Compare the result with `SHA256SUMS-windows-x64.txt` or `SHA256SUMS-release.txt` from the same release.
@@ -29,7 +29,7 @@ The current macOS packages are ad-hoc signed and not notarised. Gatekeeper may s
 macOS checksum example:
 
 ```bash
-shasum -a 256 Phase-360-0.1.0-macOS-arm64.dmg
+shasum -a 256 Phase-360-0.1.1-macOS-arm64.dmg
 ```
 
 Compare the result with the matching architecture checksum file or `SHA256SUMS-release.txt` from the same release.

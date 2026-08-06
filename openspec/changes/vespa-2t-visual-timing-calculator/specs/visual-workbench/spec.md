@@ -237,7 +237,7 @@ The workbench SHALL provide a section titled Engine character estimate that plot
 - **THEN** the same RPM samples, geometric area or specific time-area values, uncertainty bounds, profile annotation text, and model boundaries are available without colour or pointer interaction
 
 ### Requirement: Transmission editor and road-speed visualisation
-The workbench SHALL provide an optional Transmission editor in which the user manually enters primary driving-pinion and driven-gear tooth counts, selects four or five gears, manually enters cluster-pinion and driven-wheel tooth counts for each active gear, and manually enters wheel rolling circumference and graph maximum RPM. It SHALL recalculate valid reductions and road-speed results in real time. A dedicated result section SHALL show theoretical road speed on the horizontal axis and engine RPM on the vertical axis, with one distinctly labelled series per gear and an equivalent semantic table.
+The workbench SHALL provide an optional Transmission editor in which the user manually enters primary driving-pinion and driven-gear tooth counts, selects four or five gears, manually enters cluster-pinion and driven-wheel tooth counts for each active gear, and manually enters wheel rolling circumference and graph maximum RPM. It SHALL recalculate valid reductions and road-speed results in real time. A dedicated result section SHALL show theoretical road speed on the horizontal axis and engine RPM on the vertical axis, with one distinctly and directly labelled series per gear and an equivalent semantic table.
 
 #### Scenario: Edit a primary tooth count
 - **WHEN** the user enters a valid new primary driving-pinion or driven-gear tooth count
@@ -245,7 +245,7 @@ The workbench SHALL provide an optional Transmission editor in which the user ma
 
 #### Scenario: Switch between four and five gears
 - **WHEN** the user selects four or five gears
-- **THEN** the editor, graph series, legend, and semantic table expose exactly that number of active ordered gears without remounting or renaming the retained gear rows
+- **THEN** the editor, directly labelled graph series, and semantic table expose exactly that number of active ordered gears without remounting or renaming the retained gear rows
 
 #### Scenario: Measure the installed wheel
 - **WHEN** the user inspects wheel-circumference guidance
@@ -261,7 +261,30 @@ The workbench SHALL provide an optional Transmission editor in which the user ma
 
 #### Scenario: Narrow transmission layout
 - **WHEN** the viewport is narrow
-- **THEN** tooth-pair controls, source guidance, graph, legend, and table remain operable in a logical vertical order without page-level horizontal scrolling
+- **THEN** tooth-pair controls, source guidance, directly labelled graph, and table remain operable in a logical vertical order without page-level horizontal scrolling, while any necessary chart scrolling remains bounded inside the graph region
+
+### Requirement: Distilled technical-chart hierarchy
+The workbench SHALL make the calculated relationship the primary content of every technical graph. Decorative frames, duplicated legends, unexplained guides, dense grids, and repeated explanatory copy SHALL not compete with the plotted data. Secondary provenance, uncertainty explanation, and full numeric samples MAY use progressive disclosure on screen, but SHALL remain programmatically available and SHALL be expanded in print.
+
+#### Scenario: Inspect character graphs on screen
+- **WHEN** valid rotary-area or time-area series are available
+- **THEN** the graph presents essential axes, units, nominal data and bounded uncertainty at readable contrast, while full numeric samples remain available through a clearly labelled disclosure and semantic table
+
+#### Scenario: Inspect a directly labelled series
+- **WHEN** a chart can place a readable label next to each series without collision
+- **THEN** it uses direct labels instead of repeating the same series in a separate legend
+
+#### Scenario: Direct labels would collide
+- **WHEN** direct labels cannot remain legible at the current viewport or data geometry
+- **THEN** the workbench separates labels or provides an equivalent non-colour legend without hiding the semantic table
+
+#### Scenario: Select one timing phase
+- **WHEN** the user selects a phase from the keyboard-operable timing key or diagram
+- **THEN** that phase retains full visual emphasis, unrelated phases recede without disappearing, and every numeric event and overlay result remains unchanged
+
+#### Scenario: Print collapsed numeric data
+- **WHEN** a screen disclosure containing graph samples or uncertainty details is collapsed and the user prints the report
+- **THEN** the printable report includes the complete numeric table and model-boundary text without requiring an interactive expansion
 
 ### Requirement: Configuration comparison view
 The workbench SHALL let the user capture or load one comparison configuration, show compatible values side by side, and report signed deltas and uncertainty-range overlap without ranking either configuration.

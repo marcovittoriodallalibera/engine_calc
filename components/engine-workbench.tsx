@@ -82,6 +82,96 @@ const characterProfileOptions: Array<{
 
 const DEMONSTRATION_PROJECT_JSON = serialiseProject(cloneDemonstrationProject());
 
+type MobileResultChapter =
+  | "cylinder-lift"
+  | "timing"
+  | "head"
+  | "flow"
+  | "character"
+  | "gearing"
+  | "diagnostics"
+  | "methodology";
+
+function HorizontalScrollRegion({
+  children,
+  className,
+  label,
+  hint = "Scroll for more",
+}: {
+  children: ReactNode;
+  className: string;
+  label: string;
+  hint?: string;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollState, setScrollState] = useState({
+    hasOverflow: false,
+    atStart: true,
+    atEnd: true,
+  });
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+
+    const update = () => {
+      const hasOverflow = element.scrollWidth > element.clientWidth + 2;
+      const atStart = element.scrollLeft <= 2;
+      const atEnd =
+        !hasOverflow ||
+        element.scrollLeft + element.clientWidth >= element.scrollWidth - 2;
+      setScrollState((current) =>
+        current.hasOverflow === hasOverflow &&
+        current.atStart === atStart &&
+        current.atEnd === atEnd
+          ? current
+          : { hasOverflow, atStart, atEnd },
+      );
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    if (element.firstElementChild) observer.observe(element.firstElementChild);
+    window.addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  return (
+    <div
+      className={`horizontal-scroll-region ${className.includes("chart") ? "is-chart-scroll" : ""} ${scrollState.hasOverflow ? "has-overflow" : ""} ${scrollState.atStart ? "at-start" : ""} ${scrollState.atEnd ? "at-end" : ""}`}
+    >
+      <div
+        ref={scrollRef}
+        className={className}
+        role="region"
+        aria-label={label}
+        tabIndex={scrollState.hasOverflow ? 0 : undefined}
+        onScroll={(event) => {
+          const element = event.currentTarget;
+          setScrollState({
+            hasOverflow: element.scrollWidth > element.clientWidth + 2,
+            atStart: element.scrollLeft <= 2,
+            atEnd:
+              element.scrollLeft + element.clientWidth >=
+              element.scrollWidth - 2,
+          });
+        }}
+      >
+        {children}
+      </div>
+      {scrollState.hasOverflow && !scrollState.atEnd ? (
+        <span className="horizontal-scroll-hint" aria-hidden="true">
+          {hint}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function formatNumber(value: number | null | undefined, digits = 1): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "Not set";
   return value.toLocaleString("en-GB", {
@@ -373,8 +463,9 @@ function MethodologyDetailsContent() {
         </p>
         <p>
           The Engine character estimate plots only geometric area and specific
-          time-area. A selected profile adds conditional lower-, mid- or
-          upper-speed language; it does not create an output or dyno curve.
+          time-area. A selected profile adds source-qualified annotations with
+          stated applicability, uncertainty and limits; it does not create an
+          output or dyno curve.
         </p>
         <p>
           Transmission reduction is primary driven teeth divided by drive-pinion
@@ -659,7 +750,10 @@ function PortEditor({
 
 function PortTimingTable({ analysis }: { analysis: EngineProjectAnalysis }) {
   return (
-    <div className="table-scroll">
+    <HorizontalScrollRegion
+      className="table-scroll"
+      label="Scrollable port and inlet timing table"
+    >
       <table className="data-table">
         <thead>
           <tr>
@@ -723,7 +817,7 @@ function PortTimingTable({ analysis }: { analysis: EngineProjectAnalysis }) {
           ) : null}
         </tbody>
       </table>
-    </div>
+    </HorizontalScrollRegion>
   );
 }
 
@@ -892,7 +986,6 @@ function RotaryAreaChart({ analysis }: { analysis: EngineProjectAnalysis }) {
   const linePoints = plottedSamples
     .map((sample) => pointFor(sample, sample.openAreaMm2))
     .join(" ");
-  const areaPoints = `${left},${top + plotHeight} ${linePoints} ${left + plotWidth},${top + plotHeight}`;
   const hasUncertaintyEnvelope = plottedSamples.some(
     (sample) =>
       sample.minimumOpenAreaMm2 !== null &&
@@ -928,12 +1021,17 @@ function RotaryAreaChart({ analysis }: { analysis: EngineProjectAnalysis }) {
             : "Constant estimate"}
         </span>
       </div>
-      <svg
-        className="character-chart"
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-label={`Rotary inlet opening area from zero to ${formatNumber(duration, 1)} crank degrees, reaching ${formatNumber(rotary.maximumOpenAreaMm2, 1)} square millimetres`}
+      <HorizontalScrollRegion
+        className="character-chart-scroll"
+        label="Scrollable rotary inlet opening-area chart"
+        hint="Scroll across the chart"
       >
+        <svg
+          className="character-chart"
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          aria-label={`Rotary inlet opening area from zero to ${formatNumber(duration, 1)} crank degrees, reaching ${formatNumber(rotary.maximumOpenAreaMm2, 1)} square millimetres`}
+        >
         <line x1={left} x2={left} y1={top} y2={top + plotHeight} />
         <line
           x1={left}
@@ -941,17 +1039,9 @@ function RotaryAreaChart({ analysis }: { analysis: EngineProjectAnalysis }) {
           y1={top + plotHeight}
           y2={top + plotHeight}
         />
-        <line
-          className="chart-guide"
-          x1={left}
-          x2={left + plotWidth}
-          y1={top + plotHeight / 2}
-          y2={top + plotHeight / 2}
-        />
         {uncertaintyPoints ? (
           <polygon className="chart-series-band" points={uncertaintyPoints} />
         ) : null}
-        <polygon className="chart-area-fill" points={areaPoints} />
         <polyline className="chart-area-line" points={linePoints} />
         <text x={left - 8} y={top + 4} textAnchor="end">
           {formatNumber(maximumArea, 0)}
@@ -974,7 +1064,7 @@ function RotaryAreaChart({ analysis }: { analysis: EngineProjectAnalysis }) {
           Elapsed crank angle
         </text>
         <text
-          className="chart-axis-label"
+          className="chart-axis-label chart-axis-y"
           x={16}
           y={top + plotHeight / 2}
           textAnchor="middle"
@@ -982,26 +1072,36 @@ function RotaryAreaChart({ analysis }: { analysis: EngineProjectAnalysis }) {
         >
           Open area, mm²
         </text>
-      </svg>
-      {rotary.areaUncertainty ? (
-        <p className="fine-print">
-          Shaded limits propagate {rotary.areaUncertainty.provenance.inputs.join(
-            ", ",
-          )}. They are deterministic worst-case bounds, not a confidence band.
-          Angle-area is {formatMeasurementRange(
-            rotary.areaUncertainty.overlapAngleAreaMm2Deg,
-            0,
-            "mm²·deg",
-          )}; specific time-area is {formatMeasurementRange(
-            rotary.areaUncertainty.overlapSpecificTimeArea,
-            7,
-            "s·mm²/cc",
-          ) ?? "not available until RPM and displacement are valid"}.
+        </svg>
+      </HorizontalScrollRegion>
+      {hasUncertaintyEnvelope ? (
+        <p className="chart-inline-key">
+          <span aria-hidden="true" />
+          Shaded range: stated measurement bounds
         </p>
       ) : null}
       <details className="chart-data-disclosure">
-        <summary>Numeric area samples</summary>
-        <div className="table-scroll">
+        <summary>View numeric data</summary>
+        {rotary.areaUncertainty ? (
+          <p className="fine-print">
+            Shaded limits propagate {rotary.areaUncertainty.provenance.inputs.join(
+              ", ",
+            )}. They are deterministic worst-case bounds, not a confidence band.
+            Angle-area is {formatMeasurementRange(
+              rotary.areaUncertainty.overlapAngleAreaMm2Deg,
+              0,
+              "mm²·deg",
+            )}; specific time-area is {formatMeasurementRange(
+              rotary.areaUncertainty.overlapSpecificTimeArea,
+              7,
+              "s·mm²/cc",
+            ) ?? "not available until RPM and displacement are valid"}.
+          </p>
+        ) : null}
+        <HorizontalScrollRegion
+          className="table-scroll"
+          label="Scrollable rotary opening-area data table"
+        >
           <table className="data-table compact-table">
             <thead>
               <tr>
@@ -1036,7 +1136,7 @@ function RotaryAreaChart({ analysis }: { analysis: EngineProjectAnalysis }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </HorizontalScrollRegion>
       </details>
     </article>
   );
@@ -1058,10 +1158,10 @@ function TimeAreaRpmChart({ analysis }: { analysis: EngineProjectAnalysis }) {
     );
   }
 
-  const width = 620;
+  const width = 720;
   const height = 250;
   const left = 68;
-  const right = 18;
+  const right = 170;
   const top = 24;
   const bottom = 52;
   const plotWidth = width - left - right;
@@ -1082,6 +1182,50 @@ function TimeAreaRpmChart({ analysis }: { analysis: EngineProjectAnalysis }) {
       plotWidth;
   const yFor = (value: number) =>
     top + plotHeight - (value / maximum) * plotHeight;
+  const labelSpacing = 14;
+  const minimumLabelY = top + 6;
+  const maximumLabelY = top + plotHeight - 6;
+  const orderedEndLabels = geometry.series
+    .map((series) => ({
+      id: series.id,
+      y: yFor(series.samples.at(-1)!.specificTimeArea),
+    }))
+    .sort((first, second) => first.y - second.y);
+  const placedEndLabels = orderedEndLabels.map((entry, index) => ({
+    ...entry,
+    y:
+      index === 0
+        ? Math.max(minimumLabelY, entry.y)
+        : Math.max(
+            entry.y,
+            orderedEndLabels[index - 1].y + labelSpacing,
+          ),
+  }));
+  for (let index = 1; index < placedEndLabels.length; index += 1) {
+    placedEndLabels[index].y = Math.max(
+      placedEndLabels[index].y,
+      placedEndLabels[index - 1].y + labelSpacing,
+    );
+  }
+  const labelOverflow =
+    (placedEndLabels.at(-1)?.y ?? maximumLabelY) - maximumLabelY;
+  if (labelOverflow > 0) {
+    placedEndLabels.forEach((entry) => {
+      entry.y -= labelOverflow;
+    });
+  }
+  if ((placedEndLabels[0]?.y ?? minimumLabelY) < minimumLabelY) {
+    placedEndLabels[0].y = minimumLabelY;
+    for (let index = 1; index < placedEndLabels.length; index += 1) {
+      placedEndLabels[index].y = Math.max(
+        placedEndLabels[index].y,
+        placedEndLabels[index - 1].y + labelSpacing,
+      );
+    }
+  }
+  const endLabelY = new Map(
+    placedEndLabels.map((entry) => [entry.id, entry.y]),
+  );
 
   return (
     <article className="character-plot">
@@ -1092,25 +1236,23 @@ function TimeAreaRpmChart({ analysis }: { analysis: EngineProjectAnalysis }) {
         </div>
         <span className="plot-source">Geometric</span>
       </div>
-      <svg
-        className="character-chart"
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-label={`Specific time-area from ${formatNumber(geometry.rpmMinimum, 0)} to ${formatNumber(geometry.rpmMaximum, 0)} RPM for ${geometry.series.length} geometric events`}
+      <HorizontalScrollRegion
+        className="character-chart-scroll"
+        label="Scrollable specific time-area chart"
+        hint="Scroll across the chart"
       >
+        <svg
+          className="character-chart"
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          aria-label={`Specific time-area from ${formatNumber(geometry.rpmMinimum, 0)} to ${formatNumber(geometry.rpmMaximum, 0)} RPM for ${geometry.series.length} geometric events`}
+        >
         <line x1={left} x2={left} y1={top} y2={top + plotHeight} />
         <line
           x1={left}
           x2={left + plotWidth}
           y1={top + plotHeight}
           y2={top + plotHeight}
-        />
-        <line
-          className="chart-guide"
-          x1={left}
-          x2={left + plotWidth}
-          y1={top + plotHeight / 2}
-          y2={top + plotHeight / 2}
         />
         {geometry.series.map((series) => {
           const uncertaintyPoints = series.samples.some(
@@ -1135,12 +1277,30 @@ function TimeAreaRpmChart({ analysis }: { analysis: EngineProjectAnalysis }) {
                 `${xFor(sample.rpm).toFixed(2)},${yFor(sample.specificTimeArea).toFixed(2)}`,
             )
             .join(" ");
+          const finalSample = series.samples.at(-1)!;
+          const endpointX = xFor(finalSample.rpm);
+          const endpointY = yFor(finalSample.specificTimeArea);
+          const labelY = endLabelY.get(series.id) ?? endpointY;
           return (
             <g key={series.id} style={{ color: series.colour }}>
               {uncertaintyPoints ? (
                 <polygon className="chart-series-band" points={uncertaintyPoints} />
               ) : null}
               <polyline className="chart-series-line" points={points} />
+              <line
+                className="chart-series-leader"
+                x1={endpointX}
+                x2={endpointX + 8}
+                y1={endpointY}
+                y2={labelY}
+              />
+              <text
+                className="chart-series-label"
+                x={endpointX + 12}
+                y={labelY + 4}
+              >
+                {series.label}
+              </text>
             </g>
           );
         })}
@@ -1165,7 +1325,7 @@ function TimeAreaRpmChart({ analysis }: { analysis: EngineProjectAnalysis }) {
           Engine speed, RPM
         </text>
         <text
-          className="chart-axis-label"
+          className="chart-axis-label chart-axis-y"
           x={16}
           y={top + plotHeight / 2}
           textAnchor="middle"
@@ -1173,18 +1333,14 @@ function TimeAreaRpmChart({ analysis }: { analysis: EngineProjectAnalysis }) {
         >
           Specific time-area, s·mm²/cc
         </text>
-      </svg>
-      <div className="character-series-legend" aria-label="Time-area series">
-        {geometry.series.map((series) => (
-          <span key={series.id}>
-            <i style={{ background: series.colour }} aria-hidden="true" />
-            {series.label}
-          </span>
-        ))}
-      </div>
+        </svg>
+      </HorizontalScrollRegion>
       <details className="chart-data-disclosure">
-        <summary>Numeric RPM samples</summary>
-        <div className="table-scroll">
+        <summary>View numeric data</summary>
+        <HorizontalScrollRegion
+          className="table-scroll"
+          label="Scrollable time-area RPM data table"
+        >
           <table className="data-table compact-table">
             <thead>
               <tr>
@@ -1219,7 +1375,7 @@ function TimeAreaRpmChart({ analysis }: { analysis: EngineProjectAnalysis }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </HorizontalScrollRegion>
       </details>
     </article>
   );
@@ -1230,109 +1386,91 @@ function CharacterSignature({
 }: {
   character: NonNullable<EngineProjectAnalysis["character"]>;
 }) {
-  const rows = [
-    {
-      id: "rpm-bias",
-      label: "RPM / speed emphasis",
-      description:
-        "Where the selected profile and timing place relative speed emphasis.",
-      lowerLabel: "Lower-speed biased",
-      upperLabel: "Higher-speed biased",
-      score: character.rpmBias,
-    },
-    {
-      id: "low-speed-response",
-      label: "Low-speed response",
-      description:
-        "Relative tendency to retain response at lower engine speeds.",
-      lowerLabel: "Less immediate",
-      upperLabel: "More immediate",
-      score: character.lowSpeedResponse,
-    },
-    {
-      id: "useful-band-breadth",
-      label: "Useful-band breadth",
-      description: "Relative tendency towards a focused or broad useful band.",
-      lowerLabel: "Focused",
-      upperLabel: "Broad",
-      score: character.midRangeBreadth,
-    },
-    {
-      id: "over-rev-tendency",
-      label: "Over-rev tendency",
-      description:
-        "Relative tendency to carry beyond the main useful-speed region.",
-      lowerLabel: "Lower",
-      upperLabel: "Higher",
-      score: character.overRevTendency,
-    },
-  ];
+  const observationValue = (
+    observation: (typeof character.observations)[number],
+  ) => {
+    if (observation.value === null) return "Not set";
+    const unit =
+      observation.unit === "crank-degrees" ? "° crank" : " s·mm²/cc";
+    const nominal =
+      observation.unit === "crank-degrees"
+        ? formatNumber(observation.value, 1)
+        : formatTimeArea(observation.value);
+    if (observation.minimum === null || observation.maximum === null) {
+      return `${nominal}${unit}`;
+    }
+    const minimum =
+      observation.unit === "crank-degrees"
+        ? formatNumber(observation.minimum, 1)
+        : formatTimeArea(observation.minimum);
+    const maximum =
+      observation.unit === "crank-degrees"
+        ? formatNumber(observation.maximum, 1)
+        : formatTimeArea(observation.maximum);
+    return `${nominal}${unit} (${minimum} to ${maximum}${unit})`;
+  };
 
   return (
-    <figure className="character-signature" aria-labelledby="character-signature-heading">
-      <figcaption className="character-signature-heading">
+    <section className="character-signature" aria-labelledby="character-signature-heading">
+      <header className="character-signature-heading">
         <div>
-          <h3 id="character-signature-heading">Character signature</h3>
+          <h3 id="character-signature-heading">Profile-qualified annotations</h3>
           <p>
-            Four relative heuristic scores on a 0 to 100 scale. They describe
-            tendencies, not torque, power or a safe engine-speed limit.
+            Each note retains its measured quantity, declared rule, uncertainty
+            status and applicability. No performance score is generated.
           </p>
         </div>
-        <div className="character-score-legend" aria-label="Character score key">
-          <span>
-            <i className="character-legend-marker" aria-hidden="true" />
-            Nominal marker
-          </span>
-          <span>
-            <i className="character-legend-range" aria-hidden="true" />
-            Measurement range
-          </span>
-        </div>
-      </figcaption>
-      <ul className="character-score-list">
-        {rows.map((row) => {
-          const rangeWidth = Math.max(
-            0,
-            row.score.maximum - row.score.minimum,
-          );
-          return (
-            <li className="character-score-row" key={row.id}>
-              <div className="character-score-copy">
-                <h4>{row.label}</h4>
-                <p>{row.description}</p>
-              </div>
-              <div className="character-score-plot">
-                <div className="character-score-scale" aria-hidden="true">
-                  <span>{row.lowerLabel}</span>
-                  <span>{row.upperLabel}</span>
-                </div>
-                <div className="character-score-track" aria-hidden="true">
-                  <span
-                    className="character-score-range"
-                    style={{
-                      left: `${row.score.minimum}%`,
-                      width: `${rangeWidth}%`,
-                    }}
-                  />
-                  <span
-                    className="character-score-marker"
-                    style={{ left: `${row.score.value}%` }}
-                  />
-                </div>
-              </div>
-              <div className="character-score-values">
-                <strong>{formatNumber(row.score.value, 0)}</strong>
-                <span>/100 nominal</span>
+        <span className="reference-set-state">
+          {readableToken(character.referenceSet.status)}
+        </span>
+      </header>
+      <ul className="character-annotation-list">
+        {character.annotations.map((annotation) => (
+          <li className={`character-annotation status-${annotation.status}`} key={annotation.id}>
+            <div className="character-annotation-heading">
+              <h4>{annotation.label}</h4>
+              <span>{readableToken(annotation.status)}</span>
+            </div>
+            <p>{annotation.statement}</p>
+            {annotation.observations.length ? (
+              <dl className="character-observation-list">
+                {annotation.observations.map((observation) => (
+                  <div key={observation.metric}>
+                    <dt>{observation.label}</dt>
+                    <dd>{observationValue(observation)}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+            <details className="character-annotation-details">
+              <summary>Rule, scope and limits</summary>
+              <div>
+                <p><strong>Rule:</strong> {annotation.rule.statement}</p>
+                <p><strong>Applies to:</strong> {annotation.applicability}</p>
+                <p><strong>Limit:</strong> {annotation.limitations}</p>
+                <p>
+                  <strong>Uncertainty:</strong>{" "}
+                  {readableToken(annotation.uncertaintyStatus)}. {annotation.calibrationScope}
+                </p>
                 <small>
-                  {formatNumber(row.score.minimum, 0)} to{" "}
-                  {formatNumber(row.score.maximum, 0)} range
+                  Reference {annotation.referenceSetVersion} · {annotation.sourceIds.join(", ")}
                 </small>
               </div>
-            </li>
-          );
-        })}
+            </details>
+            <div className="print-character-annotation-details">
+              <p><strong>Rule:</strong> {annotation.rule.label}</p>
+              <p><strong>Applies to:</strong> {annotation.applicability}</p>
+              <p><strong>Limit:</strong> {annotation.limitations}</p>
+              <p>
+                <strong>Uncertainty:</strong>{" "}
+                {readableToken(annotation.uncertaintyStatus)} · Reference{" "}
+                {annotation.referenceSetVersion}
+              </p>
+            </div>
+          </li>
+        ))}
       </ul>
-    </figure>
+    </section>
   );
 }
 
@@ -1343,9 +1481,9 @@ function TransmissionChart({
   result: TransmissionResult;
   referenceRpm: number | null;
 }) {
-  const width = 780;
-  const height = 390;
-  const margin = { top: 28, right: 34, bottom: 62, left: 72 };
+  const width = 680;
+  const height = 420;
+  const margin = { top: 30, right: 42, bottom: 70, left: 82 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
   const rawMaximumSpeed = Math.max(
@@ -1372,10 +1510,10 @@ function TransmissionChart({
 
   return (
     <figure className="gearing-chart-frame">
-      <div
+      <HorizontalScrollRegion
         className="gearing-chart-scroll"
-        tabIndex={0}
-        aria-label="Scrollable transmission chart"
+        label="Scrollable transmission chart"
+        hint="Scroll to inspect the full chart"
       >
         <svg
           className="character-chart gearing-chart"
@@ -1432,9 +1570,9 @@ function TransmissionChart({
               y2={y(visibleReferenceRpm)}
             />
             <text
-              x={width - margin.right - 4}
+              x={margin.left + 8}
               y={y(visibleReferenceRpm) - 7}
-              textAnchor="end"
+              textAnchor="start"
             >
               Current {formatNumber(visibleReferenceRpm, 0)} RPM
             </text>
@@ -1461,7 +1599,7 @@ function TransmissionChart({
                 y={y(labelRpm) - 5}
                 style={{ fill: colour }}
               >
-                {gear.gearNumber}
+                {gear.label}
               </text>
             </g>
           );
@@ -1482,20 +1620,7 @@ function TransmissionChart({
           Engine speed, RPM
         </text>
         </svg>
-      </div>
-      <figcaption>
-        <div className="gearing-legend" aria-label="Gear line key">
-          {result.gears.map((gear, index) => (
-            <span key={gear.id}>
-              <i
-                aria-hidden="true"
-                style={{ background: transmissionColours[index] }}
-              />
-              {gear.label}
-            </span>
-          ))}
-        </div>
-      </figcaption>
+      </HorizontalScrollRegion>
     </figure>
   );
 }
@@ -1547,7 +1672,10 @@ function TransmissionResults({
             />
           </div>
           <TransmissionChart result={result} referenceRpm={referenceRpm} />
-          <div className="table-scroll gearing-table-wrap">
+          <HorizontalScrollRegion
+            className="table-scroll gearing-table-wrap"
+            label="Scrollable transmission ratios and road-speed table"
+          >
             <table className="data-table gearing-table">
               <caption className="visually-hidden">
                 Transmission ratios and theoretical road speed by gear
@@ -1596,7 +1724,7 @@ function TransmissionResults({
                 ))}
               </tbody>
             </table>
-          </div>
+          </HorizontalScrollRegion>
           {analysis.transmission.diagnostics.length ? (
             <ul className="gearing-diagnostics">
               {analysis.transmission.diagnostics.map((diagnostic) => (
@@ -1628,28 +1756,27 @@ function TransmissionResults({
 
 function EngineCharacterEstimate({
   analysis,
-  project,
 }: {
   analysis: EngineProjectAnalysis;
-  project: EngineProjectDraft;
 }) {
   const character = analysis.character;
-  const selectedProfile = characterProfileOptions.find(
-    (profile) => profile.value === project.character.profile,
-  );
-  const lowSpeedDescription = character
-    ? character.lowSpeedResponse.value >= 66
-      ? "stronger lower-speed tendency"
-      : character.lowSpeedResponse.value >= 40
-        ? "balanced lower-speed tendency"
-        : "reduced lower-speed tendency"
+  const uncertaintySummary = character
+    ? character.annotations.some(
+        (annotation) => annotation.uncertaintyStatus === "indeterminate",
+      )
+      ? "Indeterminate comparison"
+      : character.annotations.some(
+            (annotation) => annotation.uncertaintyStatus === "bounded",
+          )
+        ? "Entered bounds propagated"
+        : "No measurement bounds entered"
     : null;
 
   return (
     <section className="result-section character-estimate" id="character-results">
       <SectionHeading
         title="Engine character estimate"
-        detail="Real geometric area and time-area plots, with optional profile-qualified interpretation. No output curve is predicted."
+        detail="Real geometric area and time-area plots, followed by source-qualified context. No output curve is predicted."
       />
       <div className="character-plot-grid">
         <RotaryAreaChart analysis={analysis} />
@@ -1661,22 +1788,22 @@ function EngineCharacterEstimate({
           <span className="evidence-level profile-heuristic">
             Profile heuristic
           </span>
-          <h3>{selectedProfile?.label ?? "No profile"}</h3>
-          <p>{selectedProfile?.description}</p>
+          <h3>{character?.profile.label ?? "No profile"}</h3>
+          <p>{character?.profile.description}</p>
         </div>
         {character ? (
           <dl>
             <div>
-              <dt>Speed emphasis</dt>
-              <dd>{readableToken(character.speedEmphasis)}</dd>
+              <dt>Reference set</dt>
+              <dd>{character.referenceSet.version}</dd>
             </div>
             <div>
-              <dt>Useful band</dt>
-              <dd>{readableToken(character.bandShape)}</dd>
+              <dt>Reference status</dt>
+              <dd>{readableToken(character.referenceSet.status)}</dd>
             </div>
             <div>
-              <dt>Delivery note</dt>
-              <dd>{lowSpeedDescription}</dd>
+              <dt>Uncertainty</dt>
+              <dd>{uncertaintySummary}</dd>
             </div>
             <div>
               <dt>Model</dt>
@@ -1740,7 +1867,43 @@ function DiagnosticLevels({ analysis }: { analysis: EngineProjectAnalysis }) {
                       <a href={item.sourceUrl} target="_blank" rel="noreferrer">
                         {item.sourceLabel ?? "Source"}
                       </a>
-                    ) : null}
+                    ) : (
+                      <small className="diagnostic-source-label">
+                        Source: {item.sourceLabel}
+                      </small>
+                    )}
+                    <details className="diagnostic-provenance">
+                      <summary>Evidence boundary</summary>
+                      <dl>
+                        <div>
+                          <dt>Subtype</dt>
+                          <dd>{readableToken(item.evidenceSubtype)}</dd>
+                        </div>
+                        <div>
+                          <dt>Uncertainty</dt>
+                          <dd>{readableToken(item.uncertaintyStatus)}</dd>
+                        </div>
+                        <div>
+                          <dt>Calibration</dt>
+                          <dd>{readableToken(item.calibration.status)}</dd>
+                        </div>
+                        <div>
+                          <dt>Reference</dt>
+                          <dd>{item.referenceSetVersion ?? item.source.version}</dd>
+                        </div>
+                      </dl>
+                      <p><strong>Applies to:</strong> {item.applicability}</p>
+                      <p><strong>Operating scope:</strong> {item.operatingScope}</p>
+                      <p><strong>Calibration scope:</strong> {item.calibration.scope}</p>
+                    </details>
+                    <div className="print-diagnostic-provenance">
+                      <p>
+                        <strong>{readableToken(item.evidenceSubtype)}</strong> ·{" "}
+                        {readableToken(item.uncertaintyStatus)} ·{" "}
+                        {item.referenceSetVersion ?? item.source.version}
+                      </p>
+                      <p><strong>Applies to:</strong> {item.applicability}</p>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -1777,6 +1940,8 @@ export function EngineWorkbench({
   const [mobileView, setMobileView] = useState<"inputs" | "map" | "results">(
     "map",
   );
+  const [mobileResultChapter, setMobileResultChapter] =
+    useState<MobileResultChapter>("timing");
   const [openPrimarySections, setOpenPrimarySections] = useState({
     report: true,
     geometry: true,
@@ -1792,6 +1957,12 @@ export function EngineWorkbench({
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const analysis = useMemo(() => analyseProject(project), [project]);
+  const activeMobileResultChapter =
+    (mobileResultChapter === "cylinder-lift" &&
+      analysis.cylinderLift.appliedThicknessMm <= 0) ||
+    (mobileResultChapter === "gearing" && !analysis.transmission.enabled)
+      ? "timing"
+      : mobileResultChapter;
   const portableProject = useMemo(
     () => validateProjectDocument(project),
     [project],
@@ -1957,6 +2128,18 @@ export function EngineWorkbench({
 
   function switchMobileView(view: "inputs" | "map" | "results") {
     setMobileView(view);
+    window.requestAnimationFrame(() => {
+      window.scrollTo({
+        top: 0,
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+      });
+    });
+  }
+
+  function selectMobileResultChapter(chapter: MobileResultChapter) {
+    setMobileResultChapter(chapter);
     window.requestAnimationFrame(() => {
       window.scrollTo({
         top: 0,
@@ -2530,7 +2713,7 @@ export function EngineWorkbench({
             onChange={importProject}
           />
           <details className="project-menu">
-            <summary>Project</summary>
+            <summary aria-label="Project menu">Project</summary>
             <div className="project-menu-popover">
               <button type="button" onClick={() => importInputRef.current?.click()}>
                 Import project
@@ -2594,40 +2777,69 @@ export function EngineWorkbench({
             </button>
           ))}
         </div>
-        <div className="mobile-live-readout">
-          <span
-            aria-label={`Exhaust duration ${formatNumber(analysis.exhaust?.durationDeg, 1)} degrees`}
-          >
-            <small aria-hidden="true">EXH</small>{" "}
-            <strong aria-hidden="true">
-              {formatNumber(analysis.exhaust?.durationDeg, 1)}°
-            </strong>
-          </span>
-          <span
-            aria-label={`Blowdown ${formatNumber(analysis.timing.globalBlowdownDeg, 1)} degrees`}
-          >
-            <small aria-hidden="true">BD</small>{" "}
-            <strong aria-hidden="true">
-              {formatNumber(analysis.timing.globalBlowdownDeg, 1)}°
-            </strong>
-          </span>
-          <span
-            aria-label={`Cylinder lift ${formatNumber(analysis.cylinderLift.appliedThicknessMm, 1)} millimetres`}
-          >
-            <small aria-hidden="true">LIFT</small>{" "}
-            <strong aria-hidden="true">
-              +{formatNumber(analysis.cylinderLift.appliedThicknessMm, 1)} mm
-            </strong>
-          </span>
-          <span
-            aria-label={`Rotary inlet duration ${formatNumber(analysis.rotary?.durationDeg, 1)} degrees`}
-          >
-            <small aria-hidden="true">IN</small>{" "}
-            <strong aria-hidden="true">
-              {formatNumber(analysis.rotary?.durationDeg, 1)}°
-            </strong>
-          </span>
-        </div>
+        {mobileView === "results" ? (
+          <label className="mobile-result-selector">
+            <span>Result chapter</span>
+            <span className="select-shell">
+              <select
+                value={activeMobileResultChapter}
+                onChange={(event) =>
+                  selectMobileResultChapter(
+                    event.target.value as MobileResultChapter,
+                  )
+                }
+              >
+                {analysis.cylinderLift.appliedThicknessMm > 0 ? (
+                  <option value="cylinder-lift">Cylinder lift</option>
+                ) : null}
+                <option value="timing">Timing relationships</option>
+                <option value="head">Compression and squish</option>
+                <option value="flow">Time-area</option>
+                <option value="character">Engine character</option>
+                {analysis.transmission.enabled ? (
+                  <option value="gearing">Transmission</option>
+                ) : null}
+                <option value="diagnostics">Diagnostics</option>
+                <option value="methodology">Method and limits</option>
+              </select>
+            </span>
+          </label>
+        ) : (
+          <div className="mobile-live-readout">
+            <span
+              aria-label={`Exhaust duration ${formatNumber(analysis.exhaust?.durationDeg, 1)} degrees`}
+            >
+              <small aria-hidden="true">EXH</small>{" "}
+              <strong aria-hidden="true">
+                {formatNumber(analysis.exhaust?.durationDeg, 1)}°
+              </strong>
+            </span>
+            <span
+              aria-label={`Blowdown ${formatNumber(analysis.timing.globalBlowdownDeg, 1)} degrees`}
+            >
+              <small aria-hidden="true">BD</small>{" "}
+              <strong aria-hidden="true">
+                {formatNumber(analysis.timing.globalBlowdownDeg, 1)}°
+              </strong>
+            </span>
+            <span
+              aria-label={`Cylinder lift ${formatNumber(analysis.cylinderLift.appliedThicknessMm, 1)} millimetres`}
+            >
+              <small aria-hidden="true">LIFT</small>{" "}
+              <strong aria-hidden="true">
+                +{formatNumber(analysis.cylinderLift.appliedThicknessMm, 1)} mm
+              </strong>
+            </span>
+            <span
+              aria-label={`Rotary inlet duration ${formatNumber(analysis.rotary?.durationDeg, 1)} degrees`}
+            >
+              <small aria-hidden="true">IN</small>{" "}
+              <strong aria-hidden="true">
+                {formatNumber(analysis.rotary?.durationDeg, 1)}°
+              </strong>
+            </span>
+          </div>
+        )}
       </nav>
 
       <main id="top" className="workbench" data-mobile-view={mobileView}>
@@ -4151,8 +4363,31 @@ export function EngineWorkbench({
                   </>
                 ) : (
                   <>
-                    <strong>Inspect a phase</strong>
-                    <p>Select a labelled row below the dial to read its opening, closing and duration.</p>
+                    <div className="phase-inspector-heading">
+                      <span
+                        className="phase-inspector-colour phase-inspector-colour-summary"
+                        aria-hidden="true"
+                      />
+                      <div>
+                        <strong>Cycle overview</strong>
+                        <span>Current calculated geometry</span>
+                      </div>
+                    </div>
+                    <dl>
+                      <div>
+                        <dt>Exhaust</dt>
+                        <dd>{formatNumber(analysis.exhaust?.durationDeg, 1)}°</dd>
+                      </div>
+                      <div>
+                        <dt>First transfer</dt>
+                        <dd>{formatNumber(primaryTransfer?.port.durationDeg, 1)}°</dd>
+                      </div>
+                      <div>
+                        <dt>Blowdown</dt>
+                        <dd>{formatNumber(analysis.timing.globalBlowdownDeg, 1)}°</dd>
+                      </div>
+                    </dl>
+                    <p>Select a phase below the dial for its exact opening, closing and duration.</p>
                   </>
                 )}
               </aside>
@@ -4215,7 +4450,10 @@ export function EngineWorkbench({
             </dl>
 
             <h3>Port measurements</h3>
-            <div className="table-scroll">
+            <HorizontalScrollRegion
+              className="table-scroll"
+              label="Scrollable printable port measurements table"
+            >
               <table className="data-table print-source-table">
                 <thead>
                   <tr>
@@ -4265,7 +4503,7 @@ export function EngineWorkbench({
                   })}
                 </tbody>
               </table>
-            </div>
+            </HorizontalScrollRegion>
 
             <div className="print-induction-summary">
               <h3>Induction source</h3>
@@ -4382,8 +4620,26 @@ export function EngineWorkbench({
           </div>
 
           <header className="mobile-results-context">
-            <span>Calculated results</span>
+            <span>Engine summary</span>
             <h1>{project.name || "Untitled engine"}</h1>
+            <dl className="mobile-engine-summary">
+              <div>
+                <dt>Exhaust</dt>
+                <dd>{formatNumber(analysis.exhaust?.durationDeg, 1)}°</dd>
+              </div>
+              <div>
+                <dt>First transfer</dt>
+                <dd>{formatNumber(primaryTransfer?.port.durationDeg, 1)}°</dd>
+              </div>
+              <div>
+                <dt>Blowdown</dt>
+                <dd>{formatNumber(analysis.timing.globalBlowdownDeg, 1)}°</dd>
+              </div>
+              <div>
+                <dt>Inlet margin</dt>
+                <dd>{formatSigned(analysis.rotary?.signedTransferMarginDeg, 1)}°</dd>
+              </div>
+            </dl>
           </header>
 
           <nav className="result-navigation" aria-label="Result sections">
@@ -4401,7 +4657,10 @@ export function EngineWorkbench({
             <a href="#methodology">Method</a>
           </nav>
 
-          <div className="analysis-detail">
+          <div
+            className="analysis-detail"
+            data-mobile-result-chapter={activeMobileResultChapter}
+          >
 
           {analysis.cylinderLift.appliedThicknessMm > 0 ? (
             <section className="result-section cylinder-lift-results" id="cylinder-lift-results">
@@ -4435,7 +4694,10 @@ export function EngineWorkbench({
                   detail="Rotary inlet and transfer union"
                 />
               </div>
-              <div className="table-scroll">
+              <HorizontalScrollRegion
+                className="table-scroll"
+                label="Scrollable cylinder-lift comparison table"
+              >
                 <table className="data-table cylinder-lift-table">
                   <caption className="visually-hidden">
                     Port timing before and after the installed cylinder lift
@@ -4472,7 +4734,7 @@ export function EngineWorkbench({
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </HorizontalScrollRegion>
               <p className="model-note">
                 With the head moving together with the cylinder, this model also adds
                 {" "}{formatNumber(analysis.cylinderLift.clearanceVolumeDeltaCc, 3)} cc
@@ -4642,7 +4904,10 @@ export function EngineWorkbench({
             </p>
 
             {analysis.transfers.length ? (
-              <div className="table-scroll relation-table-wrap">
+              <HorizontalScrollRegion
+                className="table-scroll relation-table-wrap"
+                label="Scrollable timing relationship table"
+              >
                 <table className="data-table compact-table">
                   <thead>
                     <tr>
@@ -4674,11 +4939,11 @@ export function EngineWorkbench({
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </HorizontalScrollRegion>
             ) : null}
           </section>
 
-          <section className="result-section card-light">
+          <section className="result-section card-light port-timing-results">
             <SectionHeading
               title="Port and inlet timing"
               detail="All displayed values are derived from the authoritative input shown for each event."
@@ -4830,7 +5095,10 @@ export function EngineWorkbench({
               title="Time-area"
               detail="Disclosed geometric area models integrated over crank angle at the selected RPM."
             />
-            <div className="table-scroll">
+            <HorizontalScrollRegion
+              className="table-scroll"
+              label="Scrollable time-area results table"
+            >
               <table className="data-table">
                 <thead>
                   <tr>
@@ -4875,7 +5143,7 @@ export function EngineWorkbench({
                   ) : null}
                 </tbody>
               </table>
-            </div>
+            </HorizontalScrollRegion>
             <p className="model-note">
               Compare these values only when RPM, port reference, window definition
               and modelling assumptions are the same. Duct angle, radius, chamfer,
@@ -4883,14 +5151,14 @@ export function EngineWorkbench({
             </p>
           </section>
 
-          <EngineCharacterEstimate analysis={analysis} project={project} />
+          <EngineCharacterEstimate analysis={analysis} />
 
           <TransmissionResults analysis={analysis} project={project} />
 
           <DiagnosticLevels analysis={analysis} />
 
           {scenarioEffects.length ? (
-            <section className="result-section">
+            <section className="result-section scenario-effects">
               <SectionHeading
                 title="Individual what-if effects"
                 detail="Each entered change is evaluated independently against the current configuration."

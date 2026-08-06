@@ -7,8 +7,8 @@ import test from "node:test";
 
 import { preparePreviewRelease, validatePreviewTag } from "../../scripts/prepare-preview-release.mjs";
 
-const VERSION = "0.1.0";
-const TAG = "v0.1.0-preview.1";
+const VERSION = "0.1.1";
+const TAG = "v0.1.1-preview.1";
 const SOURCE_COMMIT = "1234567890abcdef1234567890abcdef12345678";
 
 function sha256(bytes) {
@@ -59,8 +59,8 @@ async function writeTarget({ root, directory, binaries, manifest }) {
 
 async function createFixture(root) {
   const windowsFiles = {
-    "Phase-360-Setup-0.1.0-x64.exe": "windows installer",
-    "Phase-360-Portable-0.1.0-x64.exe": "windows portable",
+    [`Phase-360-Setup-${VERSION}-x64.exe`]: "windows installer",
+    [`Phase-360-Portable-${VERSION}-x64.exe`]: "windows portable",
   };
   await writeTarget({
     root,
@@ -90,8 +90,8 @@ async function createFixture(root) {
       root,
       directory: `macos-${architecture}`,
       binaries: {
-        [`Phase-360-0.1.0-macOS-${architecture}.dmg`]: `${architecture} dmg`,
-        [`Phase-360-0.1.0-macOS-${architecture}.zip`]: `${architecture} zip`,
+        [`Phase-360-${VERSION}-macOS-${architecture}.dmg`]: `${architecture} dmg`,
+        [`Phase-360-${VERSION}-macOS-${architecture}.zip`]: `${architecture} zip`,
       },
       manifest: {
         file: `macos-verification-${architecture}.json`,
@@ -166,9 +166,9 @@ test("prepares a release only from matching verified target records", async () =
     assert.equal(result.evidence.assets.length, 6);
     assert.equal(result.outputFiles.length, 14);
     const consolidated = await readFile(path.join(outputDirectory, "SHA256SUMS-release.txt"), "utf8");
-    assert.match(consolidated, /Phase-360-Setup-0\.1\.0-x64\.exe/u);
-    assert.match(consolidated, /Phase-360-0\.1\.0-macOS-arm64\.dmg/u);
-    assert.match(consolidated, /Phase-360-0\.1\.0-macOS-x64\.zip/u);
+    assert.ok(consolidated.includes(`Phase-360-Setup-${VERSION}-x64.exe`));
+    assert.ok(consolidated.includes(`Phase-360-${VERSION}-macOS-arm64.dmg`));
+    assert.ok(consolidated.includes(`Phase-360-${VERSION}-macOS-x64.zip`));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -181,7 +181,7 @@ test("rejects a package changed after native verification", async () => {
   try {
     await createFixture(inputRoot);
     await writeFile(
-      path.join(inputRoot, "macos-arm64", "Phase-360-0.1.0-macOS-arm64.dmg"),
+      path.join(inputRoot, "macos-arm64", `Phase-360-${VERSION}-macOS-arm64.dmg`),
       "tampered",
     );
     await assert.rejects(
@@ -227,7 +227,7 @@ test("rejects a macOS manifest with an individually unsigned Mach-O", async () =
 });
 
 test("accepts numbered preview tags and rejects stable or mismatched tags", () => {
-  assert.equal(validatePreviewTag("v0.1.0-preview.2", "0.1.0"), true);
-  assert.throws(() => validatePreviewTag("v0.1.0", "0.1.0"), /does not match/u);
-  assert.throws(() => validatePreviewTag("v0.2.0-preview.1", "0.1.0"), /does not match/u);
+  assert.equal(validatePreviewTag("v0.1.1-preview.2", VERSION), true);
+  assert.throws(() => validatePreviewTag("v0.1.1", VERSION), /does not match/u);
+  assert.throws(() => validatePreviewTag("v0.2.0-preview.1", VERSION), /does not match/u);
 });

@@ -60,10 +60,10 @@ Building an x64 package under Rosetta can be a secondary packaging check, but it
 
 ## Build outputs
 
-For version `0.1.0`, each architecture produces:
+For version `0.1.1`, each architecture produces:
 
-- `Phase-360-0.1.0-macOS-<arch>.dmg`
-- `Phase-360-0.1.0-macOS-<arch>.zip`
+- `Phase-360-0.1.1-macOS-<arch>.dmg`
+- `Phase-360-0.1.1-macOS-<arch>.zip`
 - `SHA256SUMS-macos-<arch>.txt`
 - `macos-verification-<arch>.json`
 - `electron-fuses-macos-<arch>.json`
@@ -71,7 +71,9 @@ For version `0.1.0`, each architecture produces:
 
 The GitHub workflow uses `macos-15` for ARM64 and `macos-15-intel` for x64. Each job installs the lockfile, audits dependencies, runs the complete test suite, builds only its native architecture, verifies the final packages and retains one architecture-labelled artefact.
 
-## Native verification evidence
+## Historical native verification evidence
+
+The following retained workflow record predates 0.1.1 preview 1. It is historical package evidence and does not verify the current pre-release source.
 
 [GitHub Actions run 31079396042](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31079396042) completed successfully for source commit `cc3ac36caf7791f4143f3b2c5587de556708bb1f`:
 
@@ -116,8 +118,8 @@ The verifier records when Gatekeeper policy is disabled on a development host ra
 On macOS:
 
 ```bash
-shasum -a 256 Phase-360-0.1.0-macOS-arm64.dmg
-shasum -a 256 Phase-360-0.1.0-macOS-arm64.zip
+shasum -a 256 Phase-360-0.1.1-macOS-arm64.dmg
+shasum -a 256 Phase-360-0.1.1-macOS-arm64.zip
 ```
 
 Compare the results with `SHA256SUMS-macos-arm64.txt` and `macos-verification-arm64.json`. Replace `arm64` with `x64` for the Intel package. A matching hash proves byte equality with the verified candidate, not publisher identity.

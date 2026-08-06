@@ -457,6 +457,12 @@ Separate native ARM64 and x64 builds make the supported processor visible in the
 
 The ad-hoc signature required for a runnable Apple Silicon internal build protects code integrity locally but identifies no publisher. Hashes, native execution, ad-hoc code integrity, Developer ID identity, notarisation, stapling, and Gatekeeper acceptance therefore remain separate evidence fields rather than one generic signed state.
 
+### 2026-08-06: Distil charts as layers of one engineering instrument
+
+The 360-degree timing diagram answers when an event occurs. Linear graphs answer how a calculated quantity changes. Their interfaces therefore share one visual language but do not repeat the same evidence through nested cards, duplicate legends, unexplained grid lines, decorative centre copy, and permanently expanded numeric samples.
+
+The screen presentation keeps the plotted relation, units, uncertainty and direct series identity primary. Provenance detail and numeric samples remain available through semantic disclosures and are forced open for print. Direct line labels replace a separate legend when they remain collision-free; a non-colour fallback remains required when the viewport or data geometry cannot support them. Selecting a timing phase changes emphasis only and never changes calculated content. Mobile transmission charts may scroll inside their own bounded region, but the page itself must not acquire horizontal overflow.
+
 ## Risks / Trade-offs
 
 - [Users may mistake precise geometry for precise engine behaviour] -> Keep source provenance, uncertainty, model assumptions, and geometric-only notices adjacent to results and in exports.

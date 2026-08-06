@@ -122,6 +122,21 @@ test("desktop CSP and Electron package configuration fail closed", async () => {
   assert.match(main, /role: "close"/u);
   assert.doesNotMatch(main, /role: "reload"/u);
   assert.doesNotMatch(main, /role: "toggleDevTools"/u);
+
+  assert.match(
+    main,
+    /const printTestMode = !app\.isPackaged && process\.argv\.includes\("--print-test"\)/u,
+  );
+  assert.match(main, /phase360-print-test-\$\{process\.pid\}/u);
+  const printTestStart = main.indexOf("async function writePrintTestReport");
+  const printTestEnd = main.indexOf("protocol.registerSchemesAsPrivileged");
+  const printTestFunction = main.slice(printTestStart, printTestEnd);
+  assert.ok(printTestStart >= 0 && printTestEnd > printTestStart);
+  assert.match(printTestFunction, /await waitForDocument\(window\.webContents\)/u);
+  assert.ok(
+    printTestFunction.indexOf("waitForDocument") <
+      printTestFunction.indexOf("printToPDF"),
+  );
 });
 
 test("desktop package metadata stays aligned and dependencies are exact", async () => {

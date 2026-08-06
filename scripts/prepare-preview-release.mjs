@@ -3,10 +3,12 @@ import { mkdir, readFile, rm, stat, writeFile, copyFile } from "node:fs/promises
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const WINDOWS_BINARIES = [
-  "Phase-360-Setup-0.1.0-x64.exe",
-  "Phase-360-Portable-0.1.0-x64.exe",
-];
+function windowsBinaries(version) {
+  return [
+    `Phase-360-Setup-${version}-x64.exe`,
+    `Phase-360-Portable-${version}-x64.exe`,
+  ];
+}
 
 function macBinaries(version, architecture) {
   return [
@@ -279,7 +281,6 @@ export async function preparePreviewRelease({
   await rm(outputDirectory, { recursive: true, force: true });
   await mkdir(outputDirectory, { recursive: true });
 
-  const windowsBinaries = WINDOWS_BINARIES.map((file) => file.replace("0.1.0", version));
   const assets = [
     ...(await validateAndCopyTarget({
       sourceDirectory: path.join(inputRoot, "windows"),
@@ -287,7 +288,7 @@ export async function preparePreviewRelease({
       checksumSourceName: "SHA256SUMS.txt",
       checksumOutputName: "SHA256SUMS-windows-x64.txt",
       manifestName: "windows-verification.json",
-      binaryNames: windowsBinaries,
+      binaryNames: windowsBinaries(version),
       version,
       sourceCommit,
       validateTarget: validateWindowsManifest,

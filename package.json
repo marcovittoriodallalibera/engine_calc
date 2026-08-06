@@ -1,6 +1,6 @@
 {
   "name": "phase-360-engine-calculator",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -15,6 +15,7 @@
     "desktop": "npm run desktop:build && electron desktop/app",
     "desktop:build": "vite build --config vite.desktop.config.ts",
     "desktop:smoke": "npm run desktop:build && electron desktop/app --smoke-test",
+    "desktop:print:test": "npm run desktop:build && electron desktop/app --print-test",
     "desktop:dist:win": "npm run desktop:build && electron-builder --config electron-builder.config.mjs --win nsis portable --x64 --publish never",
     "desktop:dist:win-dir": "npm run desktop:build && electron-builder --config electron-builder.config.mjs --win dir --x64 --publish never",
     "desktop:dist:mac": "npm run desktop:build && electron-builder --config electron-builder.config.mjs --mac dmg zip --publish never",

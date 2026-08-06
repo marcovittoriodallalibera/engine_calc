@@ -81,7 +81,9 @@ The package verifier launches the actual `win-unpacked` application, the portabl
 
 The machine-readable record binds application version, source commit, native runner, Node, Electron and electron-builder versions, artefact names, byte sizes, hashes, fuse state, smoke evidence, installation result and signing status. An executable without this matching record is an unverified build.
 
-## Verified internal candidate
+## Historical verified internal candidate
+
+The following retained workflow record predates 0.1.1 preview 1. It is historical package evidence and does not verify the current pre-release source.
 
 [GitHub Actions run 31044034676](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31044034676) completed successfully on 5 August 2026 for source commit `6172a3b6d225417f06d9c001921010d1258ba37b`.
 
@@ -98,8 +100,8 @@ The artefact contains the installer, portable executable, individual SHA-256 che
 On Windows PowerShell:
 
 ```powershell
-Get-FileHash .\Phase-360-Setup-0.1.0-x64.exe -Algorithm SHA256
-Get-FileHash .\Phase-360-Portable-0.1.0-x64.exe -Algorithm SHA256
+Get-FileHash .\Phase-360-Setup-0.1.1-x64.exe -Algorithm SHA256
+Get-FileHash .\Phase-360-Portable-0.1.1-x64.exe -Algorithm SHA256
 ```
 
 Compare each value with `SHA256SUMS.txt` and `windows-verification.json`. A matching hash proves that the received bytes match the verified candidate. It does not prove who published them.

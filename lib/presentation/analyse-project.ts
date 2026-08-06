@@ -7,6 +7,9 @@ import {
   displacement,
   geometricCompressionRatio,
   ENGINE_CHARACTER_PROFILES,
+  ENGINE_CHARACTER_REFERENCE_SET,
+  ENGINE_CHARACTER_REFERENCE_SET_VERSION,
+  ENGINE_CHARACTER_REFERENCE_SOURCES,
   integrateRectangularPortAngleArea,
   integrateRotaryOverlapArea,
   intakeTransferMargin,
@@ -91,14 +94,54 @@ export type AnalysisEvidenceLevel =
   | "profile-heuristic"
   | "measured-or-modelled";
 
+export type AnalysisEvidenceSubtype =
+  | "derived-event-relationship"
+  | "selected-profile-rule"
+  | "practitioner-threshold-comparison"
+  | "idealised-geometric-model"
+  | "entered-measurement-bounds"
+  | "uncalibrated-profile-annotation";
+
+export interface AnalysisEvidenceSource {
+  id: string;
+  label: string;
+  kind:
+    | "calculation-kernel"
+    | "declared-reference-set"
+    | "practitioner-guidance"
+    | "measurement-guidance"
+    | "geometric-model";
+  version: string;
+  url: string | null;
+}
+
+export type AnalysisUncertaintyStatus =
+  | "not-applicable"
+  | "not-entered"
+  | "bounded"
+  | "indeterminate"
+  | "outside-domain"
+  | "unavailable";
+
 export interface AnalysisAdvisory {
   id: string;
   evidence: AnalysisEvidenceLevel;
+  claimLevel: AnalysisEvidenceLevel;
+  evidenceSubtype: AnalysisEvidenceSubtype;
   tone: "neutral" | "caution" | "strong";
   title: string;
   message: string;
-  sourceLabel?: string;
-  sourceUrl?: string;
+  source: AnalysisEvidenceSource;
+  referenceSetVersion: string | null;
+  applicability: string;
+  uncertaintyStatus: AnalysisUncertaintyStatus;
+  calibration: {
+    status: "not-applicable" | "not-calibrated" | "calibrated";
+    scope: string;
+  };
+  operatingScope: string;
+  sourceLabel: string;
+  sourceUrl: string | null;
 }
 
 export interface DeterministicMeasurementBounds {
@@ -340,6 +383,73 @@ function durationMs(degrees: number, rpm: number | null): number | null {
 
 const deterministicBoundsStatement =
   "These are deterministic worst-case limits from the entered plus-or-minus measurement bounds. No probability distribution, confidence interval or statistical coverage is implied.";
+
+const deterministicGeometrySource: AnalysisEvidenceSource = {
+  id: "phase360-deterministic-geometry",
+  label: "Phase 360 deterministic geometry kernel",
+  kind: "calculation-kernel",
+  version: "project-schema-6",
+  url: null,
+};
+
+const declaredProfileSource: AnalysisEvidenceSource = {
+  id: ENGINE_CHARACTER_REFERENCE_SOURCES["phase360-profile-taxonomy"].id,
+  label:
+    ENGINE_CHARACTER_REFERENCE_SOURCES["phase360-profile-taxonomy"].label,
+  kind: "declared-reference-set",
+  version:
+    ENGINE_CHARACTER_REFERENCE_SOURCES["phase360-profile-taxonomy"].version,
+  url: ENGINE_CHARACTER_REFERENCE_SOURCES["phase360-profile-taxonomy"].url,
+};
+
+const inletOverlapReferenceSource: AnalysisEvidenceSource = {
+  id: ENGINE_CHARACTER_REFERENCE_SOURCES["whiteone-vespa-inlet-overlap"].id,
+  label:
+    ENGINE_CHARACTER_REFERENCE_SOURCES["whiteone-vespa-inlet-overlap"].label,
+  kind: "practitioner-guidance",
+  version:
+    ENGINE_CHARACTER_REFERENCE_SOURCES["whiteone-vespa-inlet-overlap"].version,
+  url: ENGINE_CHARACTER_REFERENCE_SOURCES["whiteone-vespa-inlet-overlap"].url,
+};
+
+const rotaryAreaModelSource: AnalysisEvidenceSource = {
+  id: "phase360-rotary-area-model",
+  label: "Phase 360 geometric rotary overlap model",
+  kind: "geometric-model",
+  version: "cylindrical-overlap-1",
+  url: null,
+};
+
+const measurementGuidanceSource: AnalysisEvidenceSource = {
+  id: "gsf-timing-measurement-guidance",
+  label: "GSF timing measurement guidance",
+  kind: "measurement-guidance",
+  version: "unversioned-web-reference",
+  url: "https://wiki.germanscooterforum.de/index.php/Steuerzeiten_messen",
+};
+
+function analysisAdvisory(input: {
+  id: string;
+  claimLevel: AnalysisEvidenceLevel;
+  evidenceSubtype: AnalysisEvidenceSubtype;
+  tone: AnalysisAdvisory["tone"];
+  title: string;
+  message: string;
+  source: AnalysisEvidenceSource;
+  referenceSetVersion?: string | null;
+  applicability: string;
+  uncertaintyStatus: AnalysisUncertaintyStatus;
+  calibration: AnalysisAdvisory["calibration"];
+  operatingScope: string;
+}): AnalysisAdvisory {
+  return {
+    ...input,
+    evidence: input.claimLevel,
+    referenceSetVersion: input.referenceSetVersion ?? null,
+    sourceLabel: input.source.label,
+    sourceUrl: input.source.url,
+  };
+}
 
 function measurementBounds(
   nominal: number,
@@ -1733,9 +1843,13 @@ function analyseProjectCore(
         : selected,
     null,
   );
-  const character =
+  const profileReferenceSupported =
+    project.character.referenceSetVersion === PROFILE_REFERENCE_SET_VERSION &&
     project.character.referenceSetVersion ===
-      PROFILE_REFERENCE_SET_VERSION &&
+      ENGINE_CHARACTER_REFERENCE_SET.version &&
+    ENGINE_CHARACTER_REFERENCE_SET_VERSION === PROFILE_REFERENCE_SET_VERSION;
+  const character =
+    profileReferenceSupported &&
     project.character.profile !== "none" &&
     exhaust &&
     characterTransfer &&
@@ -1789,10 +1903,58 @@ function analyseProjectCore(
       : null;
   const profile =
     project.character.profile === "none" ||
-    project.character.referenceSetVersion !== PROFILE_REFERENCE_SET_VERSION
+    !profileReferenceSupported
       ? null
       : ENGINE_CHARACTER_PROFILES[project.character.profile];
   const advisories: AnalysisAdvisory[] = [];
+  const geometryCalibration: AnalysisAdvisory["calibration"] = {
+    status: "not-applicable",
+    scope:
+      "Deterministic geometry is evaluated directly from the entered dimensions and event definitions; empirical calibration is not used.",
+  };
+  const profileCalibration: AnalysisAdvisory["calibration"] = {
+    status: "not-calibrated",
+    scope:
+      "The profile reference set is not fitted to road, pressure, flow-bench or dyno data.",
+  };
+  const timingUncertaintyStatus: AnalysisUncertaintyStatus =
+    hasTimingUncertainty &&
+    globalBlowdownMinimum !== null &&
+    globalBlowdownMaximum !== null
+      ? "bounded"
+      : "not-entered";
+  if (
+    project.character.profile !== "none" &&
+    !profileReferenceSupported
+  ) {
+    const requestedProfile = ENGINE_CHARACTER_PROFILES[project.character.profile];
+    advisories.push(analysisAdvisory({
+      id: "profile-reference-unavailable",
+      claimLevel: "profile-heuristic",
+      evidenceSubtype: "selected-profile-rule",
+      tone: "caution",
+      title: `${requestedProfile.label} reference unavailable`,
+      message: `The project requests profile reference ${project.character.referenceSetVersion}, which this application does not provide. Geometry remains available, but no profile rule or character annotation has been substituted.`,
+      source: {
+        id: "requested-profile-reference",
+        label: `Requested profile reference ${project.character.referenceSetVersion}`,
+        kind: "declared-reference-set",
+        version: project.character.referenceSetVersion,
+        url: null,
+      },
+      referenceSetVersion: project.character.referenceSetVersion,
+      applicability:
+        "A recognised profile identifier whose saved reference-set version is unavailable in this application.",
+      uncertaintyStatus: "unavailable",
+      calibration: {
+        status: "not-calibrated",
+        scope:
+          "No contextual rule is evaluated because the requested reference set is unavailable.",
+      },
+      operatingScope:
+        "Profile interpretation is withheld for the current project; deterministic geometry remains in scope.",
+    }));
+  }
   if (globalBlowdownDeg !== null) {
     const rangeCopy =
       hasTimingUncertainty &&
@@ -1800,22 +1962,39 @@ function analyseProjectCore(
       globalBlowdownMaximum !== null
         ? ` Measurement bounds span ${globalBlowdownMinimum.toFixed(1)}-${globalBlowdownMaximum.toFixed(1)} degrees.`
         : "";
-    advisories.push({
+    advisories.push(analysisAdvisory({
       id: "geometry-blowdown",
-      evidence: "calculated-geometry",
+      claimLevel: "calculated-geometry",
+      evidenceSubtype: "derived-event-relationship",
       tone: globalBlowdownDeg <= 0 ? "strong" : "neutral",
       title: "Exhaust-to-transfer blowdown",
       message: `${globalBlowdownDeg.toFixed(1)} degrees from exhaust opening to the earliest transfer opening.${rangeCopy}`,
-    });
-    if (profile) {
-      advisories.push({
+      source: deterministicGeometrySource,
+      applicability:
+        "Piston-ported two-stroke geometry with valid exhaust and transfer opening events.",
+      uncertaintyStatus: timingUncertaintyStatus,
+      calibration: geometryCalibration,
+      operatingScope:
+        "Current stroke, connecting-rod and port geometry; elapsed time and specific time-area additionally use the entered RPM.",
+    }));
+    const blowdownAnnotation = character?.annotations.find(
+      (annotation) => annotation.id === "blowdown-context",
+    );
+    if (profile && blowdownAnnotation) {
+      advisories.push(analysisAdvisory({
         id: "profile-blowdown",
-        evidence: "profile-heuristic",
+        claimLevel: "profile-heuristic",
+        evidenceSubtype: "selected-profile-rule",
         tone: "neutral",
         title: `${profile.label} blowdown context`,
-        message:
-          "The selected profile changes the qualitative speed and bandwidth lens. Blowdown degrees alone cannot establish sufficient gas-flow capacity; compare geometric time-area at the same RPM and validate on the engine.",
-      });
+        message: blowdownAnnotation.statement,
+        source: declaredProfileSource,
+        referenceSetVersion: profile.referenceSetVersion,
+        applicability: blowdownAnnotation.applicability,
+        uncertaintyStatus: timingUncertaintyStatus,
+        calibration: profileCalibration,
+        operatingScope: blowdownAnnotation.operatingScope,
+      }));
     }
   }
   if (rotary) {
@@ -1833,64 +2012,106 @@ function analyseProjectCore(
             : signedMargin < 0
               ? "All transfers close before the inlet opens."
               : "The inlet opening and final transfer closure coincide geometrically.";
-      advisories.push({
+      const marginUncertaintyStatus: AnalysisUncertaintyStatus =
+        rotary.transferRelationship === "indeterminate"
+          ? "indeterminate"
+          : rotary.signedTransferMarginUncertainty
+            ? "bounded"
+            : "not-entered";
+      advisories.push(analysisAdvisory({
         id: "geometry-inlet-transfer-margin",
-        evidence: "calculated-geometry",
+        claimLevel: "calculated-geometry",
+        evidenceSubtype: "derived-event-relationship",
         tone:
           rotary.transferRelationship === "indeterminate"
             ? "caution"
             : "neutral",
         title: "Signed inlet-to-transfer margin",
         message: `${signedMargin > 0 ? "+" : ""}${signedMargin.toFixed(1)} degrees. ${relationshipCopy}`,
-      });
-      advisories.push({
-        id: "profile-inlet-transfer-margin",
-        evidence: "profile-heuristic",
-        tone:
-          rotary.signedTransferMarginUncertainty &&
-          rotary.signedTransferMarginUncertainty.minimumDeg <= 5 &&
-          rotary.signedTransferMarginUncertainty.maximumDeg > 5
-            ? "caution"
-            : (rotary.signedTransferMarginUncertainty?.minimumDeg ??
-                  signedMargin) > 5
-              ? "strong"
-              : "neutral",
-        title: profile
-          ? `${profile.label} overlap context`
-          : "Vespa overlap reference",
-        message:
-          rotary.signedTransferMarginUncertainty &&
-          rotary.signedTransferMarginUncertainty.minimumDeg <= 5 &&
-          rotary.signedTransferMarginUncertainty.maximumDeg > 5
-            ? "The measurement bounds cross the conservative +5 degree Vespa reference discussed by WhiteOne Racing, so at-or-below versus exceeds is indeterminate. Treat the threshold as contextual guidance, not a statistical limit or proof of correct flow direction."
-            : (rotary.signedTransferMarginUncertainty?.minimumDeg ??
-                  signedMargin) > 5
-              ? "The signed opening overlap exceeds the conservative +5 degree Vespa ceiling discussed by WhiteOne Racing across the entered measurement bounds. Treat this as a setup-specific warning and verify starting, blowback and delivery on the engine."
-              : "The signed opening overlap is at or below the conservative +5 degree Vespa ceiling discussed by WhiteOne Racing across the entered measurement bounds. This is context, not proof of an optimum or of correct flow direction.",
-        sourceLabel: "WhiteOne Racing, inlet overlap",
-        sourceUrl: "https://www.youtube.com/watch?v=jhnKO9YTaC0&t=506s",
-      });
+        source: deterministicGeometrySource,
+        applicability:
+          "Crankshaft rotary induction and at least one valid piston-controlled transfer event.",
+        uncertaintyStatus: marginUncertaintyStatus,
+        calibration: geometryCalibration,
+        operatingScope:
+          "Current rotary inlet opening edge compared with the latest-closing enabled transfer event.",
+      }));
+      const overlapAnnotation = character?.annotations.find(
+        (annotation) => annotation.id === "inlet-transfer-reference",
+      );
+      if (profile && overlapAnnotation) {
+        advisories.push(analysisAdvisory({
+          id: "profile-inlet-transfer-margin",
+          claimLevel: "profile-heuristic",
+          evidenceSubtype: "practitioner-threshold-comparison",
+          tone:
+            overlapAnnotation.status === "indeterminate"
+              ? "caution"
+              : overlapAnnotation.status === "above-reference"
+                ? "strong"
+                : "neutral",
+          title: `${profile.label} overlap context`,
+          message: overlapAnnotation.statement,
+          source: inletOverlapReferenceSource,
+          referenceSetVersion: profile.referenceSetVersion,
+          applicability: overlapAnnotation.applicability,
+          uncertaintyStatus:
+            overlapAnnotation.uncertaintyStatus === "indeterminate"
+              ? "indeterminate"
+              : overlapAnnotation.uncertaintyStatus === "bounded"
+                ? "bounded"
+                : overlapAnnotation.uncertaintyStatus === "unavailable"
+                  ? "unavailable"
+                  : "not-entered",
+          calibration: profileCalibration,
+          operatingScope: overlapAnnotation.operatingScope,
+        }));
+      }
     }
-    advisories.push({
+    advisories.push(analysisAdvisory({
       id: "geometry-inlet-closing",
-      evidence: "calculated-geometry",
+      claimLevel: "calculated-geometry",
+      evidenceSubtype: "derived-event-relationship",
       tone: "neutral",
       title: "Inlet closing is a separate event",
       message: `${rotary.inletCloseAfterTdcDeg.toFixed(1)} degrees ATDC. This edge is not part of the inlet-to-transfer opening margin.`,
-    });
-    if (profile) {
-      advisories.push({
+      source: deterministicGeometrySource,
+      applicability: "Crankshaft rotary induction with a valid closing edge.",
+      uncertaintyStatus: "not-entered",
+      calibration: geometryCalibration,
+      operatingScope: "Current rotary inlet closing edge after TDC.",
+    }));
+    const closingAnnotation = character?.annotations.find(
+      (annotation) => annotation.id === "inlet-closing-context",
+    );
+    if (profile && closingAnnotation) {
+      advisories.push(analysisAdvisory({
         id: "profile-inlet-closing",
-        evidence: "profile-heuristic",
+        claimLevel: "profile-heuristic",
+        evidenceSubtype: "selected-profile-rule",
         tone: "neutral",
         title: `${profile.label} inlet-closing context`,
-        message:
-          "Later inlet closing can support higher-speed filling but can also increase low-speed blowback. The selected profile changes the interpretation, while crankcase pressure and inlet restriction remain unmodelled.",
-      });
+        message: closingAnnotation.statement,
+        source: declaredProfileSource,
+        referenceSetVersion: profile.referenceSetVersion,
+        applicability: closingAnnotation.applicability,
+        uncertaintyStatus: "not-entered",
+        calibration: profileCalibration,
+        operatingScope: closingAnnotation.operatingScope,
+      }));
     }
-    advisories.push({
+    const rotaryUncertaintyStatus: AnalysisUncertaintyStatus =
+      rotaryInduction.analysis.geometry?.uncertaintyStatus === "outside-domain"
+        ? "outside-domain"
+        : rotary.overlapAngleAreaMm2Deg === null
+          ? "unavailable"
+          : rotary.areaUncertainty
+            ? "bounded"
+            : "not-entered";
+    advisories.push(analysisAdvisory({
       id: "modelled-rotary-area",
-      evidence: "measured-or-modelled",
+      claimLevel: "measured-or-modelled",
+      evidenceSubtype: "idealised-geometric-model",
       tone: rotary.overlapAngleAreaMm2Deg === null ? "caution" : "neutral",
       title: "Rotary inlet overlap area",
       message:
@@ -1899,7 +2120,20 @@ function analyseProjectCore(
           : rotary.areaModel === "constant-area"
             ? "This project uses the legacy constant-area approximation across the inlet duration. Switch to cylindrical overlap and enter a common axial width to model the changing geometric opening."
             : "Area is integrated from the instantaneous overlap of the measured and calculated arcs across a sharp-edged rectangular window. Duct shape, leakage and discharge are excluded.",
-    });
+      source: rotaryAreaModelSource,
+      applicability:
+        rotary.areaModel === "constant-area"
+          ? "Rotary-inlet projects with a manually entered constant effective-window area approximation."
+          : "Rotary-inlet projects using one measured component arc, the solved complementary arc and a measured common axial overlap width.",
+      uncertaintyStatus: rotaryUncertaintyStatus,
+      calibration: {
+        status: "not-calibrated",
+        scope:
+          "Geometric overlap only. No discharge coefficient, pressure history, mass-flow or measured engine-response dataset is fitted.",
+      },
+      operatingScope:
+        "Current desired rotary timing and selected area source; specific time-area additionally uses the entered RPM and displacement.",
+    }));
   }
   const hasRotaryMeasurementUncertainty =
     (rotaryInduction.analysis.geometry?.uncertaintyStatus ?? "not-entered") !==
@@ -1908,35 +2142,54 @@ function analyseProjectCore(
       project.induction.commonAxialOverlapWidthUncertaintyMm,
     ) > 0;
   if (hasTimingUncertainty || hasRotaryMeasurementUncertainty) {
-    advisories.push({
+    const uncertaintyOutsideDomain =
+      rotaryInduction.analysis.geometry?.uncertaintyStatus ===
+      "outside-domain";
+    advisories.push(analysisAdvisory({
       id: "modelled-measurement-uncertainty",
-      evidence: "measured-or-modelled",
+      claimLevel: "measured-or-modelled",
+      evidenceSubtype: "entered-measurement-bounds",
       tone: "caution",
       title: "Measurement uncertainty propagated",
-      message:
-        "Entered millimetre uncertainty is propagated through every valid affected geometry, area, time-area and shaded character range. Bounds are deterministic worst cases from the entered plus-or-minus values, with no probability distribution or confidence level implied. Near a dead centre, equal linear uncertainty need not produce equal angular uncertainty.",
-      sourceLabel: "GSF measurement guidance",
-      sourceUrl:
-        "https://wiki.germanscooterforum.de/index.php/Steuerzeiten_messen",
-    });
+      message: uncertaintyOutsideDomain
+        ? "At least one entered plus-or-minus range leaves the physical rotary domain, so the affected bounded result is withheld while valid nominal geometry remains available. No probability distribution or confidence level is implied."
+        : "Entered millimetre uncertainty is propagated through every valid affected geometry, area and time-area result. Bounds are deterministic worst cases from the entered plus-or-minus values, with no probability distribution or confidence level implied. Near a dead centre, equal linear uncertainty need not produce equal angular uncertainty.",
+      source: measurementGuidanceSource,
+      applicability:
+        "Only explicitly entered dimensional plus-or-minus bounds whose complete range remains in the dependent calculation's physical domain.",
+      uncertaintyStatus: uncertaintyOutsideDomain
+        ? "outside-domain"
+        : "bounded",
+      calibration: geometryCalibration,
+      operatingScope:
+        "Current entered dimensional bounds and every valid dependent timing, rotary-area and time-area calculation.",
+    }));
   }
-  if (character) {
-    advisories.push({
+  if (character && profile) {
+    advisories.push(analysisAdvisory({
       id: "modelled-engine-character",
-      evidence: "measured-or-modelled",
+      claimLevel: "profile-heuristic",
+      evidenceSubtype: "uncalibrated-profile-annotation",
       tone: "neutral",
-      title: "Uncalibrated engine character",
+      title: "Uncalibrated character annotations",
       message: character.modelStatement,
-    });
-  } else {
-    advisories.push({
-      id: "profile-not-selected",
-      evidence: "profile-heuristic",
-      tone: "neutral",
-      title: "No interpretation profile selected",
-      message:
-        "Geometry remains fully available. Select a profile only when you want a conditional engine-character interpretation.",
-    });
+      source: declaredProfileSource,
+      referenceSetVersion: character.referenceSet.version,
+      applicability: profile.applicability,
+      uncertaintyStatus:
+        character.annotations.some(
+          (annotation) => annotation.uncertaintyStatus === "indeterminate",
+        )
+          ? "indeterminate"
+          : character.annotations.some(
+                (annotation) => annotation.uncertaintyStatus === "bounded",
+              )
+            ? "bounded"
+            : "not-entered",
+      calibration: profileCalibration,
+      operatingScope:
+        "Current calculated geometry and specific time-area, interpreted only through the explicitly selected exhaust-use context.",
+    }));
   }
 
   return {

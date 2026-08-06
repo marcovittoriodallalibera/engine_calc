@@ -313,7 +313,7 @@ export function TimingDial({
         <span className="timing-legend-bar" aria-hidden="true" />
         <span className="timing-legend-copy">
           <span className="timing-legend-label">{phase.label}</span>
-          <span className="timing-legend-category">{phase.category}</span>
+          <span className="visually-hidden">{phase.category}</span>
         </span>
         <span className="timing-legend-value">{formatSpan(phase.span)}</span>
       </>
@@ -449,9 +449,13 @@ export function TimingDial({
               stroke={
                 angle === 0 || angle === 180
                   ? "#f5f4ee"
-                  : "rgba(210, 215, 203, 0.46)"
+                  : isThirtyDegreeTick
+                    ? "rgba(210, 215, 203, 0.46)"
+                    : isTenDegreeTick
+                      ? "rgba(210, 215, 203, 0.28)"
+                      : "rgba(210, 215, 203, 0.13)"
               }
-              strokeWidth={isThirtyDegreeTick ? 2 : isTenDegreeTick ? 1.4 : 1}
+              strokeWidth={isThirtyDegreeTick ? 2 : isTenDegreeTick ? 1.2 : 0.8}
             />
           );
         })}
@@ -524,14 +528,15 @@ export function TimingDial({
                   ringGeometry.strokeWidth + (isSelected ? 3 : isActive ? 1.5 : 0)
                 }
                 strokeLinecap="round"
-                opacity={isActive ? 1 : 0.86}
+                opacity={
+                  isActive ? 1 : selectedId === null ? 0.86 : 0.32
+                }
                 aria-hidden="true"
                 onMouseEnter={() => setHoveredKey(phase.key)}
                 onMouseLeave={() => setHoveredKey(null)}
                 onClick={select}
                 style={{
                   cursor: onSelect ? "pointer" : "default",
-                  transition: "stroke-width 160ms ease, opacity 160ms ease",
                   outline: "none",
                 }}
               >
@@ -593,18 +598,9 @@ export function TimingDial({
           strokeWidth="1.5"
           aria-hidden="true"
         />
-        <circle
-          cx={CENTRE}
-          cy={CENTRE}
-          r="61"
-          fill="none"
-          stroke="rgba(210, 215, 203, 0.14)"
-          strokeWidth="1"
-          aria-hidden="true"
-        />
         <text
           x={CENTRE}
-          y={CENTRE - 21}
+          y={CENTRE - 11}
           fill="#f5f4ee"
           fontSize="20"
           fontWeight="760"
@@ -616,22 +612,9 @@ export function TimingDial({
         </text>
         <text
           x={CENTRE}
-          y={CENTRE + 2}
-          fill="#858e82"
-          fontSize="11"
-          fontWeight="700"
-          letterSpacing="1.6"
-          textAnchor="middle"
-          dominantBaseline="central"
-          aria-hidden="true"
-        >
-          CRANK REFERENCE
-        </text>
-        <text
-          x={CENTRE}
-          y={CENTRE + 27}
+          y={CENTRE + 17}
           fill="#c7cdc2"
-          fontSize="16"
+          fontSize="14"
           fontWeight="650"
           textAnchor="middle"
           dominantBaseline="central"

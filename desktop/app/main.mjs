@@ -26,7 +26,12 @@ import {
 } from "./security.mjs";
 
 const smokeMode = process.argv.includes("--smoke-test");
+const printTestMode = !app.isPackaged && process.argv.includes("--print-test");
+const activeSessionPartition = printTestMode
+  ? `phase360-print-test-${process.pid}`
+  : SESSION_PARTITION;
 const smokeReportPath = () => path.join(app.getPath("temp"), "phase360-smoke-report.json");
+const printTestReportPath = () => path.join(app.getPath("temp"), "phase360-desktop-print.pdf");
 
 async function writeSmokeReport(report) {
   const destination = smokeReportPath();
@@ -34,6 +39,22 @@ async function writeSmokeReport(report) {
   await writeFile(temporary, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   await rm(destination, { force: true });
   await rename(temporary, destination);
+}
+
+async function writePrintTestReport(window) {
+  await waitForDocument(window.webContents);
+  await window.webContents.executeJavaScript(
+    "document.fonts && document.fonts.ready ? document.fonts.ready.then(() => true) : true",
+  );
+  const report = await window.webContents.printToPDF({
+    pageSize: "A4",
+    landscape: false,
+    printBackground: true,
+    preferCSSPageSize: true,
+  });
+  const destination = printTestReportPath();
+  await writeFile(destination, report);
+  return destination;
 }
 
 protocol.registerSchemesAsPrivileged([
@@ -277,7 +298,7 @@ app.on("login", (event) => event.preventDefault());
 
 app.whenReady().then(async () => {
   const rendererRoot = path.join(app.getAppPath(), "renderer");
-  const isolatedSession = session.fromPartition(SESSION_PARTITION);
+  const isolatedSession = session.fromPartition(activeSessionPartition);
   isolatedSession.protocol.handle(APP_SCHEME, (request) =>
     servePackagedAsset(request, rendererRoot),
   );
@@ -331,7 +352,7 @@ app.whenReady().then(async () => {
     backgroundColor: "#e7e4da",
     title: "Phase 360",
     webPreferences: {
-      partition: SESSION_PARTITION,
+      partition: activeSessionPartition,
       nodeIntegration: false,
       nodeIntegrationInWorker: false,
       nodeIntegrationInSubFrames: false,
@@ -349,7 +370,7 @@ app.whenReady().then(async () => {
   });
 
   mainWindow.once("ready-to-show", () => {
-    if (!smokeMode) mainWindow?.show();
+    if (!smokeMode && !printTestMode) mainWindow?.show();
   });
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -358,7 +379,17 @@ app.whenReady().then(async () => {
   try {
     await mainWindow.loadURL(APP_URL);
     if (smokeMode) await runSmokeTest(mainWindow);
+    if (printTestMode) {
+      const destination = await writePrintTestReport(mainWindow);
+      console.log(`Desktop print report written to ${destination}`);
+      app.exit(0);
+    }
   } catch (error) {
+    if (printTestMode) {
+      console.error(error instanceof Error ? error.message : String(error));
+      app.exit(1);
+      return;
+    }
     if (!smokeMode) throw error;
     const report = {
       ok: false,
