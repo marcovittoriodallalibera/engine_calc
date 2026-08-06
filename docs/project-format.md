@@ -113,6 +113,6 @@ Every schema 1 to 5 project migrates to schema 6 with transmission analysis disa
 
 The MVP has no accounts, project API, cloud database or telemetry containing project measurements. Import, calculation, local save, fragment creation, JSON export and SVG export occur in the browser or packaged desktop client.
 
-Desktop local storage remains readable to software with access to the Windows user profile. The enabled Electron cookie-encryption fuse does not encrypt local storage. Use JSON export for deliberate portability and Clear local data to remove retained project keys from the active profile.
+Desktop local storage remains readable to software with access to the Windows or macOS user profile. The enabled Electron cookie-encryption fuse does not encrypt local storage. Use JSON export for deliberate portability and Clear local data to remove retained project keys from the active profile.
 
 Any future feature that transfers project content over a network requires a separately specified capability and explicit user action.

@@ -67,8 +67,8 @@ npm run desktop:build
 - `lib/presentation`: one project-to-results analysis path used by the interface
 - `components`: realtime workbench and accessible SVG timing dial
 - `app`: Vinext application shell, metadata and responsive print styling
-- `desktop`: offline Vite renderer, hardened Electron host, and packaged Windows application boundary
-- `scripts`: Electron fuse and native Windows package verification
+- `desktop`: offline Vite renderer, hardened Electron host, and packaged Windows and macOS application boundary
+- `scripts`: Electron fuse and native Windows and macOS package verification
 - `tests`: mathematical, portability and rendered-output acceptance tests
 - `openspec`: proposal, design, capability specifications and implementation tasks
 
@@ -88,6 +88,7 @@ Future network transfer of project content requires a separate capability and ex
 - [Project format and portability](docs/project-format.md)
 - [Security audit](docs/security-audit.md)
 - [Windows desktop distribution](docs/windows-desktop.md)
+- [macOS desktop distribution](docs/macos-desktop.md)
 - [OpenSpec change](openspec/changes/vespa-2t-visual-timing-calculator/proposal.md)
 
 ## Web deployment
@@ -115,3 +116,17 @@ npm run desktop:dist:win
 The initial Windows package is intentionally unsigned. It is suitable for internal verification, may trigger Microsoft SmartScreen, and must not be presented as a trusted public release. Public promotion requires a valid Authenticode signature from the expected publisher. See [Windows desktop distribution](docs/windows-desktop.md) for the exact boundary and verification procedure.
 
 The first verified internal Windows x64 candidate is retained by [GitHub Actions run 31044034676](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31044034676) for source commit `6172a3b6d225417f06d9c001921010d1258ba37b`.
+
+## macOS desktop
+
+The same offline desktop renderer is packaged separately for Apple Silicon ARM64 and Intel x64. Choose the package matching the processor. Neither build relies on Rosetta as compatibility evidence.
+
+```bash
+npm run desktop:dist:mac:arm64
+npm run desktop:dist:mac:x64
+node scripts/verify-macos-package.mjs --dist-dir desktop-dist --arch arm64 --expected-signature unsigned
+```
+
+Each native workflow opens the unpacked application, mounted DMG and extracted ZIP, verifies every Mach-O architecture, checks the Electron fuses and bundle integrity, and emits architecture-specific SHA-256 checksums and a machine-readable verification record.
+
+The initial Mac packages are ad-hoc signed and not notarised. They are internal verification candidates, identify no authorised publisher, and may be stopped by Gatekeeper after download. Public distribution requires the expected Developer ID Application and Apple Team ID, effective hardened runtime, accepted notarisation, stapled tickets and active Gatekeeper acceptance. See [macOS desktop distribution](docs/macos-desktop.md).

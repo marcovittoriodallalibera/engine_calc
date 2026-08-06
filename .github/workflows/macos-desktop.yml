@@ -1,0 +1,103 @@
+name: macOS desktop
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-verify:
+    name: Build and verify macOS ${{ matrix.architecture }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: arm64
+            nodeArchitecture: arm64
+            runner: macos-15
+          - architecture: x64
+            nodeArchitecture: x64
+            runner: macos-15-intel
+    env:
+      CI: "true"
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.1
+          architecture: ${{ matrix.nodeArchitecture }}
+          package-manager-cache: false
+
+      - name: Confirm native runner architecture
+        shell: bash
+        run: |
+          expected="${{ matrix.architecture }}"
+          actual="$(uname -m)"
+          if [[ "$expected" == "x64" ]]; then expected="x86_64"; fi
+          [[ "$actual" == "$expected" ]]
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      - name: Run complete test suite
+        run: npm test
+
+      - name: Ensure source tree remains clean
+        shell: bash
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+          [[ -z "$(git ls-files --others --exclude-standard)" ]]
+
+      - name: Build DMG and ZIP
+        run: npm run desktop:dist:mac -- --${{ matrix.architecture }}
+
+      - name: Verify packages natively
+        run: >-
+          node scripts/verify-macos-package.mjs
+          --dist-dir desktop-dist
+          --arch ${{ matrix.architecture }}
+          --expected-signature unsigned
+
+      - name: Upload verified deliverables
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: phase-360-macos-${{ matrix.architecture }}-${{ github.sha }}
+          path: |
+            desktop-dist/Phase-360-*-macOS-${{ matrix.architecture }}.dmg
+            desktop-dist/Phase-360-*-macOS-${{ matrix.architecture }}.zip
+            desktop-dist/SHA256SUMS-macos-${{ matrix.architecture }}.txt
+            desktop-dist/macos-verification-${{ matrix.architecture }}.json
+            desktop-dist/electron-fuses-macos-${{ matrix.architecture }}.json
+            desktop-dist/smoke-macos-${{ matrix.architecture }}-*.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Record artifact digest
+        shell: bash
+        run: >-
+          printf 'GitHub artifact SHA-256: %s\n'
+          '${{ steps.upload.outputs.artifact-digest }}'
+          >> "$GITHUB_STEP_SUMMARY"

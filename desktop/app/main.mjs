@@ -116,6 +116,54 @@ function hardenWebContents(contents) {
   });
 }
 
+function configureApplicationMenu() {
+  if (process.platform !== "darwin") {
+    Menu.setApplicationMenu(null);
+    return;
+  }
+
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: app.name,
+        submenu: [
+          { role: "about" },
+          { type: "separator" },
+          { role: "services" },
+          { type: "separator" },
+          { role: "hide" },
+          { role: "hideOthers" },
+          { role: "unhide" },
+          { type: "separator" },
+          { role: "quit" },
+        ],
+      },
+      {
+        label: "Edit",
+        submenu: [
+          { role: "undo" },
+          { role: "redo" },
+          { type: "separator" },
+          { role: "cut" },
+          { role: "copy" },
+          { role: "paste" },
+          { role: "selectAll" },
+        ],
+      },
+      {
+        label: "Window",
+        submenu: [
+          { role: "minimize" },
+          { role: "zoom" },
+          { role: "close" },
+          { type: "separator" },
+          { role: "front" },
+        ],
+      },
+    ]),
+  );
+}
+
 function waitForDocument(contents) {
   return contents.executeJavaScript(`new Promise((resolve, reject) => {
     const deadline = Date.now() + 15000;
@@ -273,7 +321,7 @@ app.whenReady().then(async () => {
     }
   });
 
-  Menu.setApplicationMenu(null);
+  configureApplicationMenu();
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 960,

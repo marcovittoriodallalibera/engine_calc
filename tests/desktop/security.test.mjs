@@ -93,11 +93,22 @@ test("desktop CSP and Electron package configuration fail closed", async () => {
   assert.equal(builderConfig.asar, true);
   assert.equal(builderConfig.disableAsarIntegrity, false);
   assert.equal(builderConfig.electronFuses.runAsNode, false);
+  assert.equal(builderConfig.electronFuses.resetAdHocDarwinSignature, true);
   assert.equal(builderConfig.electronFuses.enableEmbeddedAsarIntegrityValidation, true);
   assert.equal(builderConfig.electronFuses.onlyLoadAppFromAsar, true);
   assert.equal(builderConfig.electronFuses.grantFileProtocolExtraPrivileges, false);
   assert.equal(builderConfig.electronFuses.loadBrowserProcessSpecificV8Snapshot, false);
   assert.ok(builderConfig.files.includes("!node_modules{,/**/*}"));
+  assert.deepEqual(builderConfig.mac.target, ["dmg", "zip"]);
+  assert.equal(builderConfig.mac.identity, null);
+  assert.equal(builderConfig.mac.notarize, false);
+  assert.equal(builderConfig.mac.forceCodeSigning, false);
+  assert.equal(builderConfig.mac.hardenedRuntime, true);
+  assert.equal(builderConfig.mac.minimumSystemVersion, "12.0");
+  assert.equal(
+    builderConfig.mac.artifactName,
+    "Phase-360-${version}-macOS-${arch}.${ext}",
+  );
 
   const main = await readFile(path.join(projectRoot, "desktop/app/main.mjs"), "utf8");
   assert.doesNotMatch(main, /preload\s*:/u);
@@ -105,6 +116,12 @@ test("desktop CSP and Electron package configuration fail closed", async () => {
   assert.match(main, /contextIsolation:\s*true/u);
   assert.match(main, /sandbox:\s*true/u);
   assert.doesNotMatch(main, /loadURL\(["'`]https?:/u);
+  assert.match(main, /process\.platform !== "darwin"/u);
+  assert.match(main, /role: "copy"/u);
+  assert.match(main, /role: "paste"/u);
+  assert.match(main, /role: "close"/u);
+  assert.doesNotMatch(main, /role: "reload"/u);
+  assert.doesNotMatch(main, /role: "toggleDevTools"/u);
 });
 
 test("desktop package metadata stays aligned and dependencies are exact", async () => {

@@ -20,7 +20,7 @@ The system SHALL automatically retain the most recent valid project state in cli
 - **THEN** the system does not partially apply it and offers a safe empty or demonstration state without crashing
 
 #### Scenario: Resume a packaged desktop project
-- **WHEN** the user returns in the same Windows desktop profile after a valid project was saved locally
+- **WHEN** the user returns in the same Windows or macOS desktop profile after a valid project was saved locally
 - **THEN** the application restores the same authoritative schema-version-6 inputs and recalculates all derived results without a backend
 
 ### Requirement: Canonical versioned project document

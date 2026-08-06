@@ -20,7 +20,7 @@ The initial page and document language is British English. User-facing strings w
 - Add a transparent optional transmission calculation from editable Vespa primary and four- or five-gear tooth pairs, measured wheel rolling circumference, and selected maximum RPM without converting theoretical gearing speed into a vehicle-performance claim.
 - Separate deterministic calculations, documented configuration-specific references, and tuning hypotheses in every recommendation surface.
 - Deliver the first release as a static browser application that remains useful without accounts, project APIs, or server-side calculation.
-- Package the same client-only calculator as an offline Windows x64 application without introducing a calculation backend or a second project model.
+- Package the same client-only calculator as offline Windows x64 and native macOS ARM64 and x64 applications without introducing a calculation backend or a second project model.
 - Make desktop privilege boundaries, native execution evidence, artefact provenance, integrity, and signing status explicit.
 - Preserve extension points for non-rectangular measured port profiles, localisation, dynamic simulation, and a future persistence service without designing those features now.
 
@@ -34,7 +34,7 @@ The initial page and document language is British English. User-facing strings w
 - Do not add accounts, cloud projects, short-link services, telemetry containing project data, or collaborative editing.
 - Do not make the radial diagram directly draggable in the first release. Equivalent numeric controls are the authoritative edit surface.
 - Do not treat a straight chord, tangential ruler width, or remaining solid crank-web shoulder as the open cut-away arc. Do not infer a second crankcase-track diameter, disconnected windows, rounded edge timing, axial alignment, leakage, crankshaft strength, or balance from the MVP inputs.
-- Do not add automatic updates, machine-wide administration, Windows x86 or ARM64 builds, MSIX distribution, a signing-certificate service, hosted-code fallback, or a general-purpose Electron IPC API in this change.
+- Do not add automatic updates, machine-wide administration, Windows x86 or ARM64 builds, MSIX distribution, a Mac App Store or PKG package, a universal Mac binary, a signing-certificate service, hosted-code fallback, or a general-purpose Electron IPC API in this change.
 
 ## Decisions
 
@@ -417,13 +417,21 @@ The desktop renderer reuses the same React presentation path, project validator,
 
 Navigation, renderer-created windows, device and media permissions, and renderer network requests are denied by default. Sanitised clipboard write is the only permission exception and is limited to the packaged origin and main workbench, so the explicit Share action can copy a canonical HTTPS fragment without exposing the private custom-scheme URL. Version-controlled HTTPS methodology references may open in the system browser only through an exact-origin allowlist. JSON and SVG downloads are limited to user-generated Blob URLs, safe filenames, and explicit user gestures.
 
-The desktop renderer uses a stricter local Content Security Policy than the server-rendered web build because it does not need inline bootstrap scripts. Packaged builds harden Electron fuses, validate the embedded archive, and restrict application loading to that archive. These controls do not make the archive a publisher signature and do not replace Authenticode.
+The desktop renderer uses a stricter local Content Security Policy than the server-rendered web build because it does not need inline bootstrap scripts. Packaged builds harden Electron fuses, validate the embedded archive, and restrict application loading to that archive. These controls do not make the archive a publisher signature and do not replace Authenticode on Windows or Developer ID and notarisation on macOS.
+
+On macOS the application provides only the native application, edit, and window roles required for expected keyboard and window behaviour. Packaged menus expose no reload or developer-tools role and introduce no preload or IPC bridge.
 
 ### 24. Treat native execution, integrity and publisher identity as separate evidence
 
 Windows packaging runs on a native Windows CI runner from the committed lockfile and produces installer and portable x64 executables. A build manifest and SHA-256 checksums establish source and byte-level traceability. A native smoke record proves that the matching executable starts from the packaged custom origin, retains renderer isolation, executes a known deterministic calculation, preserves local data across reload, and shuts down cleanly.
 
 Checksum integrity, successful execution, and Authenticode publisher identity are separate claims. An unsigned executable can be a verified internal test artefact but is not a trusted public release. Public promotion requires a valid signature from the expected publisher and a retained post-build verification result.
+
+### 25. Build and verify each macOS architecture natively
+
+Apple Silicon and Intel receive separate DMG and ZIP artefacts rather than one untested universal bundle. The ARM64 build runs on a native `macos-15` runner and the x64 build runs on a native `macos-15-intel` runner. Each verifier rejects a translated or mismatched runner, checks every packaged Mach-O slice, reads hardened Electron fuses from the final application, mounts or extracts each distributable, and repeats the local-origin smoke test against the actual packaged application.
+
+The initial macOS candidate uses the ad-hoc signature restored after fuse modification and records that state, the absence of publisher identity and notary tickets, and the effective Gatekeeper assessment. Configuration intent such as `hardenedRuntime: true` is not treated as final runtime evidence. Public promotion requires a Developer ID Application identity from the expected Apple Team ID, successful strict code-signature verification, effective hardened runtime, accepted notarisation, stapled tickets, and Gatekeeper acceptance. Signing credentials remain outside source, artefacts, and logs.
 
 ## Reasoning log
 
@@ -442,6 +450,12 @@ The desired opening and closing angles answer the user's primary question: which
 The requested exhaust-use profiles are useful only if they expose intent, source, version, applicability, and uncertainty. Treating a touring-box or race-expansion band as a geometric law would turn a literature comparison into a false error state. The three-level diagnostic model therefore preserves exact relationships first, makes profile comparison conditional and advisory, and reserves the highest evidence level for identified measurements or calibrated models. The same boundary applies to the character graph: area and time-area can be calculated, but torque and power require pressure, combustion, exhaust-wave, loss, and calibration data that this MVP does not possess.
 
 The requested true effective inlet area is consequently named geometric rotary overlap area. It improves materially on a constant-area rectangle by modelling the moving cylindrical contact, but it remains a sealing-surface geometry calculation. Keeping that name and its exclusions adjacent to the curve prevents a precise square-millimetre result from becoming an unsupported mass-flow claim.
+
+### 2026-08-06: Keep macOS architecture and publisher trust explicit
+
+Separate native ARM64 and x64 builds make the supported processor visible in the filename, manifest, and smoke report and avoid relying on Rosetta as compatibility evidence. DMG is the normal installation surface and ZIP remains an equivalent portable archive only because both formats are opened and smoke-tested independently.
+
+The ad-hoc signature required for a runnable Apple Silicon internal build protects code integrity locally but identifies no publisher. Hashes, native execution, ad-hoc code integrity, Developer ID identity, notarisation, stapling, and Gatekeeper acceptance therefore remain separate evidence fields rather than one generic signed state.
 
 ## Risks / Trade-offs
 
@@ -474,6 +488,9 @@ The requested true effective inlet area is consequently named geometric rotary o
 - [A desktop shell can silently become a remote-code browser] -> Load only packaged application content, deny renderer network access and navigation, and open approved references only in the system browser.
 - [A checksum can be mistaken for publisher trust] -> Report hash integrity and Authenticode status separately and block public promotion when signature verification is not valid.
 - [A cross-built executable can be mistaken for Windows verification] -> Require a native Windows smoke record tied to the final artefact hash.
+- [An Intel package can be mistaken for Apple Silicon compatibility, or vice versa] -> Build and smoke-test separate thin Mach-O packages on matching native runners and include the architecture in every filename and manifest.
+- [An ad-hoc macOS signature can be mistaken for publisher identity] -> Record the actual signature classification and Apple Team ID and block public promotion without the expected Developer ID identity.
+- [A configured hardened runtime can be mistaken for final signed-bundle evidence] -> Inspect the packaged code-signing flags and require notarisation, stapled tickets, and Gatekeeper acceptance independently.
 
 ## Migration Plan
 
@@ -487,7 +504,8 @@ The requested true effective inlet area is consequently named geometric rotary o
 8. Introduce schema version 5 with diagnostic profile and reference version, rotary area source and common width, stated uncertainties, and character-graph RPM range; migrate supported version 1, 2, 3, and 4 projects to profile `none` without invented bounds and keep every curve, diagnostic, and graph series derived.
 9. Introduce schema version 6 with optional manually entered authoritative transmission inputs; migrate supported version 1, 2, 3, 4, and 5 projects with transmission disabled and no invented hardware, implement the reduction and road-speed kernel, and generate the speed-horizontal and RPM-vertical graph, semantic table, and print section from one result.
 10. Build the offline Windows x64 installer and portable executable on a native Windows runner from the lockfile, verify hardened fuses and the final packaged origin, run the native smoke suite, and retain checksums, build manifest, exact signing status, and matching source commit.
-11. Deploy an immutable preview build, run mathematical, browser, accessibility, migration, authority-switch, manual measurement, transmission, print, diagnostic-boundary, and no-performance-claim cross-checks, then promote the same verified artefact. Promote a Windows build publicly only after Authenticode validates the expected publisher.
+11. Build separate offline macOS ARM64 and x64 DMG and ZIP artefacts on matching native runners, inspect all Mach-O slices, verify the final packaged origin and fuses, run every packaged-format smoke, and retain checksums, build manifests, exact signing, notarisation, stapling, and Gatekeeper state.
+12. Deploy an immutable preview build, run mathematical, browser, accessibility, migration, authority-switch, manual measurement, transmission, print, diagnostic-boundary, and no-performance-claim cross-checks, then promote the same verified artefact. Promote a Windows build publicly only after Authenticode validates the expected publisher. Promote a macOS build publicly only after Developer ID, hardened runtime, notarisation, stapling, and Gatekeeper validation all succeed for the expected Apple Team ID.
 
 Rollback consists of redeploying the previous static artefact. The initial release has no server data migration. If a later application build cannot read a stored project schema, it must leave the stored payload intact and offer export or a clear version error rather than overwriting it.
 
@@ -499,3 +517,4 @@ Rollback consists of redeploying the previous static artefact. The initial relea
 - Validate the first built-in profile reference catalogue against traceable published configurations and, separately, against physical road, pressure, flow-bench, or dyno datasets before any future calibrated performance model is proposed. This does not block the MVP's explicitly heuristic profile comparisons.
 - Cross-check manually entered tooth pairs and measured wheel circumference against the exact installed components used in physical acceptance tests.
 - Select the future Authenticode certificate and expected publisher identity before public Windows distribution. This does not block an explicitly unsigned internal verification build.
+- Select the future Developer ID Application certificate and expected Apple Team ID before public macOS distribution. This does not block an explicitly ad-hoc signed and non-notarised internal verification build.

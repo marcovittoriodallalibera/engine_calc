@@ -28,6 +28,22 @@ const electronBuilderConfig = {
     ],
     requestedExecutionLevel: "asInvoker",
   },
+  mac: {
+    icon: "icon.png",
+    target: ["dmg", "zip"],
+    artifactName: "Phase-360-${version}-macOS-${arch}.${ext}",
+    category: "public.app-category.utilities",
+    minimumSystemVersion: "12.0",
+    darkModeSupport: true,
+    hardenedRuntime: true,
+    identity: null,
+    notarize: false,
+    forceCodeSigning: false,
+  },
+  dmg: {
+    artifactName: "Phase-360-${version}-macOS-${arch}.${ext}",
+    title: "Phase 360 ${version} (${arch})",
+  },
   nsis: {
     artifactName: "Phase-360-Setup-${version}-${arch}.${ext}",
     oneClick: false,
@@ -42,6 +58,7 @@ const electronBuilderConfig = {
     artifactName: "Phase-360-Portable-${version}-${arch}.${ext}",
   },
   electronFuses: {
+    resetAdHocDarwinSignature: true,
     runAsNode: false,
     enableCookieEncryption: true,
     enableNodeOptionsEnvironmentVariable: false,

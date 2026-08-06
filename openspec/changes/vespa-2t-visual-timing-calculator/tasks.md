@@ -188,3 +188,14 @@
 - [x] 13.6 Run the native Windows smoke test against the portable and installed application, including offline local loading, a known calculation, persistence, clean shutdown, installation, and uninstall
 - [x] 13.7 Record exact artefact hashes, Windows runner, architecture, source commit, dependency-audit result, smoke evidence, and signing status
 - [x] 13.8 Document unsigned SmartScreen behaviour and require verified Authenticode publisher identity before any public Windows promotion
+
+## 14. macOS Desktop Distribution
+
+- [x] 14.1 Configure separate DMG and ZIP packages for Apple Silicon ARM64 and Intel x64 with an explicit bundle identifier, icon, category, filename architecture, and macOS 12 minimum
+- [x] 14.2 Add a native macOS application, edit, and window menu with standard roles and no packaged reload or developer-tools entry
+- [x] 14.3 Add a native macOS verifier for every Mach-O architecture, bundle metadata, DMG integrity, ZIP extraction, Electron fuses, code integrity, signing state, notarisation, Gatekeeper, checksums, and packaged-format smoke tests
+- [x] 14.4 Add lockfile-based native `macos-15` ARM64 and `macos-15-intel` x64 workflow jobs with immutable actions and architecture-specific retained artefacts
+- [ ] 14.5 Run native ARM64 and Intel smoke tests against the unpacked, DMG-contained, and ZIP-contained applications
+- [ ] 14.6 Record exact hashes, source commit, runner and macOS versions, architectures, dependency audit, fuses, package smoke evidence, signature classification, Apple Team ID, notary tickets, and Gatekeeper state for both architectures
+- [x] 14.7 Document installation, architecture selection, internal ad-hoc and Gatekeeper limits, local-data behaviour, and checksum verification without recommending global Gatekeeper disablement
+- [x] 14.8 Block public promotion unless the expected Developer ID Application and Team ID, strict signature, effective hardened runtime, notarisation, stapled app and DMG tickets, and active Gatekeeper acceptance all pass

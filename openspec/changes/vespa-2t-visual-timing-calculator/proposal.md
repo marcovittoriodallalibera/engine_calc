@@ -30,6 +30,8 @@ Vespa two-stroke builders currently have to combine separate calculators, degree
 - Add local project persistence, versioned JSON import/export, shareable client-side links, SVG export, and an A4 report with editable project code, date, and three-line engine specification.
 - Add an offline Windows x64 desktop distribution that packages the same calculation and presentation code locally inside a hardened Electron host. The desktop application does not load hosted application code, transmit project content, or require a backend.
 - Produce a native Windows installer and portable executable from the lockfile, with SHA-256 checksums, build provenance, native smoke-test evidence, and explicit Authenticode signing status.
+- Add separate offline macOS desktop packages for Apple Silicon and Intel, built and smoke-tested on matching native runners from the same renderer, calculation kernel, and project schema.
+- Produce traceable DMG and ZIP artefacts for each macOS architecture with SHA-256 checksums, native smoke evidence, actual code-signing and Gatekeeper state, and an explicit Developer ID and notarisation gate for public distribution.
 - Keep the first release client-only. Accounts, cloud projects, CFD, dynamic pressure or combustion simulation, absolute torque or power prediction, synthetic dyno curves, reachable top-speed prediction, acceleration or road-load simulation, exhaust-pipe design, universal tuning targets, chord-to-arc conversion, independent crankcase-track diameter, disconnected rotary windows, edge-radius modelling, and crankshaft strength or balance assessment are outside this change.
 
 ## Capabilities
@@ -42,7 +44,7 @@ Vespa two-stroke builders currently have to combine separate calculators, degree
 - `transmission-analysis`: Manually configurable Vespa primary and four- or five-speed gearbox geometry, wheel-circumference-based theoretical road speed, upshift RPM drop, graph data, validation, and explicit vehicle-dynamics exclusions.
 - `visual-workbench`: Real-time editing, the accessible 360-degree timing diagram, numeric results, diagnostic profiles, qualitative character visualisation, responsive interaction, and comparison-ready presentation.
 - `project-portability`: Local persistence, schema-versioned import/export, shareable links, SVG export, and printable output.
-- `desktop-distribution`: Offline Windows packaging, hardened desktop runtime boundaries, native-build evidence, artefact integrity, smoke testing, signing status, and supported-platform limits.
+- `desktop-distribution`: Offline Windows and macOS packaging, hardened desktop runtime boundaries, native-build evidence, artefact integrity, smoke testing, signing and notarisation status, and supported-platform limits.
 
 ### Modified Capabilities
 
@@ -57,3 +59,4 @@ None.
 - Uses private client-only hosting for the current preview. Continuous integration and the complete deployment acceptance suite remain open, and no runtime calculation backend or user-data service is required.
 - Adds Electron only as a packaging and host boundary. The framework-independent calculation kernel, schema-version-6 project model, and authoritative data model remain unchanged.
 - Adds a native Windows build workflow and executable artefacts. An unsigned build is an internal or test distribution and is not a trusted public release.
+- Adds native Apple Silicon and Intel macOS workflows and architecture-specific artefacts. An unsigned or ad-hoc signed package is an internal candidate and is not a trusted public release without the expected Developer ID identity and Apple notarisation evidence.

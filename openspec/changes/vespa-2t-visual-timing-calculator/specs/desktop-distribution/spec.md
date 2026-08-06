@@ -1,6 +1,6 @@
 ## Purpose
 
-Defines the offline Windows desktop distribution, hardened Electron runtime boundary, native-build evidence, artefact integrity, signing policy, and supported-platform limits for the same client-only Phase 360 calculator.
+Defines the offline Windows and macOS desktop distributions, hardened Electron runtime boundary, native-build evidence, artefact integrity, signing and notarisation policy, and supported-platform limits for the same client-only Phase 360 calculator.
 
 ## ADDED Requirements
 
@@ -50,7 +50,7 @@ The desktop host SHALL enable renderer sandboxing, context isolation and web sec
 The desktop application SHALL use the same bounded schema, validation, migration, local continuity, clear-data action, and portable JSON format as the web application. Project content SHALL remain in the local desktop profile or an explicitly selected export or share representation and SHALL NOT be sent to telemetry, an updater, a project backend, or an external service.
 
 #### Scenario: Resume and clear a desktop project
-- **WHEN** a valid project was saved in the same Windows user profile and the application is reopened
+- **WHEN** a valid project was saved in the same operating-system user profile and the application is reopened
 - **THEN** it restores the same authoritative inputs, recalculates all results, and removes only retained profile data when the user confirms Clear local data
 
 #### Scenario: Exchange a project with the web application
@@ -106,7 +106,7 @@ Every Windows artefact SHALL state whether it is unsigned or Authenticode-signed
 - **WHEN** the executable is unsigned unexpectedly, the publisher differs, or signature verification is not valid
 - **THEN** public promotion is blocked even when the checksum matches
 
-### Requirement: Declared support and limits
+### Requirement: Declared Windows support and limits
 The release documentation SHALL state the exact Windows architecture and native Windows environment used for verification. The initial desktop target SHALL be Windows x64 only. Windows x86, ARM64, automatic updates, MSIX distribution, machine-wide installation, hosted-code fallback, backend storage, and operating-system encryption guarantees SHALL remain unsupported unless separately implemented and verified.
 
 #### Scenario: Run on an unverified platform
@@ -116,3 +116,85 @@ The release documentation SHALL state the exact Windows architecture and native 
 #### Scenario: Use an external reference offline
 - **WHEN** the user activates an approved external reference without network access
 - **THEN** the calculator remains usable and only the system-browser reference fails or waits according to normal operating-system behaviour
+
+### Requirement: Offline packaged macOS applications
+The system SHALL provide separate Apple Silicon `arm64` and Intel `x64` macOS applications whose renderer, styles, calculation code, and project-validation code are packaged locally. Each architecture SHALL produce a DMG and ZIP carrying the same application bundle. Editing, calculation, local continuity, validated JSON import and export, SVG export, and print SHALL NOT require a network connection. The macOS applications SHALL NOT load or fall back to hosted application code.
+
+#### Scenario: Launch natively on Apple Silicon
+- **WHEN** the `arm64` package is launched on a supported Apple Silicon host without network access
+- **THEN** the workbench loads from packaged assets and produces the same deterministic results as the tested web and Windows builds
+
+#### Scenario: Launch natively on Intel
+- **WHEN** the `x64` package is launched on a supported Intel host without network access
+- **THEN** the workbench loads from packaged assets and produces the same deterministic results as the tested web and Windows builds
+
+#### Scenario: macOS package content is unavailable
+- **WHEN** a required packaged renderer asset is missing, invalid, or outside the packaged-content boundary
+- **THEN** the application fails closed locally and does not navigate to a hosted fallback
+
+### Requirement: Native macOS application menu
+The packaged macOS application SHALL provide native application, edit, and window menus with the standard About, Services, Hide, Quit, Undo, Redo, Cut, Copy, Paste, Select All, Minimise, Zoom, Close, and Bring All to Front roles. A packaged menu SHALL NOT expose reload or developer-tools roles and SHALL NOT add preload, IPC, Node, navigation, or remote-content capabilities. Windows MAY continue to suppress its application menu.
+
+#### Scenario: Use standard macOS editing and window commands
+- **WHEN** the user activates a supported native menu role or its normal Command-key shortcut
+- **THEN** the focused field or window receives the normal operating-system action without expanding renderer privilege
+
+#### Scenario: Inspect the packaged menu
+- **WHEN** the production application menu is created on macOS
+- **THEN** no reload or developer-tools role is present
+
+### Requirement: Traceable macOS artefacts
+Each release build SHALL run from the committed lockfile on a native runner matching its target architecture and SHALL produce an architecture-labelled DMG, ZIP, SHA-256 checksum file, fuse record, packaged smoke records, and machine-readable build manifest. The manifest SHALL identify application version, source commit, bundle identifier, target and native runner architecture, macOS runner version, minimum configured macOS version, Node and Electron versions, artefact names, byte sizes, hashes, every packaged Mach-O architecture, fuse state, packaged-format smoke results, code-signature classification, Apple Team ID when present, effective hardened-runtime state, notary tickets, Gatekeeper assessment, and public-promotion eligibility.
+
+#### Scenario: Build an Apple Silicon candidate
+- **WHEN** the native `arm64` workflow completes from a tested commit
+- **THEN** its ARM64 DMG, ZIP, checksum, fuses, smoke records, and manifest are retained together and refer to that commit
+
+#### Scenario: Build an Intel candidate
+- **WHEN** the native `x64` workflow completes from a tested commit
+- **THEN** its x64 DMG, ZIP, checksum, fuses, smoke records, and manifest are retained together and refer to that commit
+
+#### Scenario: macOS build identity is incomplete
+- **WHEN** a package cannot be tied to its source commit, architecture, checksum, native smoke, fuse state, actual signature state, and Gatekeeper evidence
+- **THEN** it is not eligible to be described as a verified macOS candidate
+
+### Requirement: Native macOS smoke-test gate
+A macOS package SHALL be described as verified only after its thin Mach-O bundle runs on a matching native macOS architecture and every executable Mach-O slice in the application matches that target. The native verifier SHALL validate bundle identifier, version, configured minimum system version, DMG integrity, the DMG Applications link, ZIP extraction, strict bundle code integrity, Electron fuses, and equality of the packaged executables. It SHALL launch the unpacked, DMG-contained, and ZIP-contained applications and repeat the local-origin, renderer-isolation, restrictive-CSP, blocked-network, blocked-popup, denied-permission, deterministic-calculation, local-persistence, project-round-trip, single-window, and clean-shutdown smoke checks.
+
+#### Scenario: Verify a DMG
+- **WHEN** the DMG is verified, mounted read-only, and its application is launched by the native harness
+- **THEN** its architecture, code integrity, packaged origin, security checks, known calculation, project round trip, persistence, and clean shutdown all pass
+
+#### Scenario: Verify a ZIP
+- **WHEN** the ZIP is extracted with metadata preservation and its application is launched by the native harness
+- **THEN** the same required native checks pass and the executable matches the verified unpacked bundle
+
+#### Scenario: Detect translated or mixed execution
+- **WHEN** the runner architecture differs from the target or any packaged Mach-O contains an unexpected or additional architecture
+- **THEN** verification fails and Rosetta execution is not accepted as native compatibility evidence
+
+### Requirement: Explicit macOS signing and notarisation status
+Every macOS artefact SHALL report whether its final bundle is unsigned, ad-hoc signed, or Developer ID signed. An unsigned or ad-hoc signed artefact MAY be retained as an internal candidate but SHALL NOT be presented as publisher-identified, notarised, Gatekeeper-trusted, or publicly promotable. Public distribution SHALL require a strict valid Developer ID Application signature from the expected Apple Team ID, effective hardened runtime, Apple notarisation acceptance, stapled application and DMG tickets, and Gatekeeper acceptance under an active policy. Hashes, ad-hoc code integrity, publisher identity, notarisation, stapling, and Gatekeeper status SHALL remain separate evidence. Credentials SHALL remain outside source, artefacts, and logs.
+
+#### Scenario: No Apple distribution identity is configured
+- **WHEN** a native package is produced with no authorised Developer ID credentials
+- **THEN** its actual unsigned or ad-hoc state, absent Team ID and notary tickets, and Gatekeeper limitation are recorded and public promotion is blocked
+
+#### Scenario: A public macOS candidate is produced
+- **WHEN** authorised signing and notarisation credentials are supplied through the protected build environment
+- **THEN** the expected Team ID, strict signature, hardened runtime, accepted notarisation, stapled application and DMG tickets, and active Gatekeeper acceptance are all verified after packaging
+
+#### Scenario: Apple trust verification is incomplete
+- **WHEN** identity, Team ID, hardened runtime, notarisation, stapling, or Gatekeeper verification is missing or invalid
+- **THEN** public promotion is blocked even when native smoke and every checksum pass
+
+### Requirement: Declared macOS support and limits
+Release documentation SHALL distinguish Apple Silicon `arm64` and Intel `x64`, state the minimum configured macOS version and the exact native runner versions used for verification, and direct users to the matching package. The initial release SHALL NOT claim a universal binary, Mac App Store package, PKG installer, automatic updates, application-level local-data encryption, or compatibility outside the verified architecture and operating-system surface.
+
+#### Scenario: Select the wrong architecture
+- **WHEN** a user attempts to use an artefact for an unverified or different Mac architecture
+- **THEN** the documentation makes no compatibility claim and directs the user to the matching verified package
+
+#### Scenario: Use an internal candidate under Gatekeeper
+- **WHEN** an unsigned or ad-hoc signed internal package is downloaded and Gatekeeper does not identify an authorised publisher
+- **THEN** the documentation explains the limited internal status without recommending global Gatekeeper disablement
