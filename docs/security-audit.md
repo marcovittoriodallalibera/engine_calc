@@ -42,6 +42,15 @@ This review covers the Phase 360 browser application, its project import and loc
 - The retained architecture-specific checksum and verification records bind the individual DMG and ZIP hashes, byte sizes, complete bundle manifests, native architecture, macOS 15 runner class, toolchain, smoke records, fuse records, ad-hoc signature classification, absent Team ID, absent notary tickets and recorded Gatekeeper state to the same commit.
 - The shared desktop changes also passed native Windows x64 regression run [31079396055](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31079396055), job `92544515296`.
 
+## Public desktop preview evidence
+
+- [GitHub Actions release run 31084404789](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31084404789) completed successfully for tagged source commit `a12e4c620cf1d0a47fc5b1784af48a840c549f8e`.
+- Windows x64 job `92560367497`, native Apple Silicon job `92560367584`, native Intel Mac job `92560367556`, and aggregate publish job `92561363515` all completed successfully. Each native job repeated the dependency audit, complete test suite, package build, native verification and package smoke checks before publication was possible.
+- [Phase 360 0.1.0 preview 3](https://github.com/marcovittoriodallalibera/engine_calc/releases/tag/v0.1.0-preview.3), release ID `366073583`, is public, non-draft and explicitly marked as a pre-release. It is not the stable `latest` release.
+- The release contains six application packages and eight checksum or machine-readable evidence files. The aggregate record identifies `v0.1.0-preview.3`, the exact source commit, byte size and SHA-256 digest of every application package, `trustedPublicRelease: false`, unsigned Windows status and ad-hoc, non-notarised macOS status.
+- All six package URLs and the five download, checksum and aggregate-evidence URLs prepared for the Wiki returned HTTP 200 after publication. The public release API digests match `SHA256SUMS-release.txt` and `RELEASE-EVIDENCE.json` for every application package.
+- Diagnostic tags `v0.1.0-preview.1` and `v0.1.0-preview.2` remain as audit history without GitHub releases. The public API returned 404 for both release tags and for the stable `latest` channel after preview 3 publication.
+
 ## Positive controls
 
 - Project JSON is limited to 48,000 bytes, reconstructed from recognised fields and bounded to 12 port groups.
