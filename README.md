@@ -89,6 +89,7 @@ Future network transfer of project content requires a separate capability and ex
 - [Security audit](docs/security-audit.md)
 - [Windows desktop distribution](docs/windows-desktop.md)
 - [macOS desktop distribution](docs/macos-desktop.md)
+- [GitHub Wiki source](wiki/Home.md)
 - [OpenSpec change](openspec/changes/vespa-2t-visual-timing-calculator/proposal.md)
 
 ## Web deployment
@@ -113,7 +114,7 @@ npm run desktop:dist:win
 
 `desktop:smoke` runs the local Electron runtime and needs a graphical host. The release workflow builds natively on Windows x64, tests the unpacked application, portable executable and installed application, verifies Electron fuses and Authenticode status, and emits SHA-256 checksums plus a machine-readable verification record.
 
-The initial Windows package is intentionally unsigned. It is suitable for internal verification, may trigger Microsoft SmartScreen, and must not be presented as a trusted public release. Public promotion requires a valid Authenticode signature from the expected publisher. See [Windows desktop distribution](docs/windows-desktop.md) for the exact boundary and verification procedure.
+The initial Windows package is intentionally unsigned. It is suitable for internal verification or an explicitly labelled pre-release, may trigger Microsoft SmartScreen, and must not be presented as a trusted public release. Trusted public promotion requires a valid Authenticode signature from the expected publisher. See [Windows desktop distribution](docs/windows-desktop.md) for the exact boundary and verification procedure.
 
 The first verified internal Windows x64 candidate is retained by [GitHub Actions run 31044034676](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31044034676) for source commit `6172a3b6d225417f06d9c001921010d1258ba37b`.
 
@@ -129,6 +130,10 @@ node scripts/verify-macos-package.mjs --dist-dir desktop-dist --arch arm64 --exp
 
 Each native workflow opens the unpacked application, mounted DMG and extracted ZIP, verifies every Mach-O architecture, checks the Electron fuses and bundle integrity, and emits architecture-specific SHA-256 checksums and a machine-readable verification record.
 
-The initial Mac packages are ad-hoc signed and not notarised. They are internal verification candidates, identify no authorised publisher, and may be stopped by Gatekeeper after download. Public distribution requires the expected Developer ID Application and Apple Team ID, effective hardened runtime, accepted notarisation, stapled tickets and active Gatekeeper acceptance. See [macOS desktop distribution](docs/macos-desktop.md).
+The initial Mac packages are ad-hoc signed and not notarised. They are internal verification candidates or explicitly labelled pre-release packages, identify no authorised publisher, and may be stopped by Gatekeeper after download. Trusted public distribution requires the expected Developer ID Application and Apple Team ID, effective hardened runtime, accepted notarisation, stapled tickets and active Gatekeeper acceptance. See [macOS desktop distribution](docs/macos-desktop.md).
 
 The first verified internal ARM64 and Intel candidates are retained by [GitHub Actions run 31079396042](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31079396042) for source commit `cc3ac36caf7791f4143f3b2c5587de556708bb1f`.
+
+## Desktop preview downloads
+
+The tag-triggered preview workflow rebuilds and verifies Windows x64, macOS ARM64 and macOS x64 from one commit. It publishes only after package hashes, byte sizes, source identity, native manifests and unsigned trust state reconcile. The [GitHub Wiki](https://github.com/marcovittoriodallalibera/engine_calc/wiki) provides the current version-specific download links and security guidance.

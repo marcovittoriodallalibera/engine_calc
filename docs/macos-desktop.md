@@ -124,9 +124,9 @@ Compare the results with `SHA256SUMS-macos-arm64.txt` and `macos-verification-ar
 
 ## Gatekeeper, Developer ID and notarisation
 
-The initial packages are ad-hoc signed and not notarised. They are internal candidates and may be stopped by Gatekeeper when downloaded. After verifying the checksum, an authorised internal tester may use the normal Finder Open or macOS Privacy & Security approval flow. Gatekeeper must never be disabled globally for this application.
+The initial packages are ad-hoc signed and not notarised. They are internal candidates or explicitly labelled GitHub pre-release packages and may be stopped by Gatekeeper when downloaded. After verifying the checksum, an authorised tester may use the normal Finder Open or macOS Privacy & Security approval flow when organisational policy permits it. Gatekeeper must never be disabled globally for this application.
 
-Public distribution outside the Mac App Store requires all of the following:
+Trusted public distribution or use of the stable release channel outside the Mac App Store requires all of the following:
 
 - `Developer ID Application` signature from the expected Apple Team ID
 - strict post-package code-signature verification
@@ -141,7 +141,7 @@ Apple describes Developer ID as the publisher-identity mechanism for application
 
 ## Known limits
 
-- The internal package does not provide verified publisher identity or notarisation.
+- The internal or pre-release package does not provide verified publisher identity or notarisation.
 - Local project data is not encrypted by the application.
 - No automatic updater, backend project store or telemetry transport is present.
 - ZIP cannot itself carry a stapled ticket; a future public ZIP must contain the already signed, notarised and stapled application.

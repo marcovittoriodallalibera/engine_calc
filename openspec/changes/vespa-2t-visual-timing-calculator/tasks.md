@@ -199,3 +199,12 @@
 - [x] 14.6 Record exact hashes, source commit, runner and macOS versions, architectures, dependency audit, fuses, package smoke evidence, signature classification, Apple Team ID, notary tickets, and Gatekeeper state for both architectures
 - [x] 14.7 Document installation, architecture selection, internal ad-hoc and Gatekeeper limits, local-data behaviour, and checksum verification without recommending global Gatekeeper disablement
 - [x] 14.8 Block public promotion unless the expected Developer ID Application and Team ID, strict signature, effective hardened runtime, notarisation, stapled app and DMG tickets, and active Gatekeeper acceptance all pass
+
+## 15. GitHub Wiki and Desktop Preview Release
+
+- [x] 15.1 Add a tag-triggered release workflow that rebuilds and verifies Windows x64, macOS ARM64, and macOS Intel from the same commit before publication
+- [x] 15.2 Add aggregate release reconciliation for version, tag, source commit, byte size, package hash, native manifest, signature state, consolidated checksums, and fail-closed existing-release handling
+- [ ] 15.3 Publish `v0.1.0-preview.1` as an explicitly unsigned and non-notarised GitHub pre-release, never as the stable `latest` release
+- [ ] 15.4 Create the GitHub Wiki Home, Downloads, Installation and security, and sidebar pages in British English
+- [x] 15.5 Link every supported system to version-specific assets and matching checksum and evidence files, while declaring unsupported platforms and trust limits
+- [ ] 15.6 Verify every public Wiki link, release asset, checksum, source tag, workflow conclusion, Wiki Git remote, and repository main SHA after publication

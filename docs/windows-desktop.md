@@ -91,7 +91,7 @@ The machine-readable record binds application version, source commit, native run
 - GitHub archive digest: `sha256:572dd7e282fd0921268153a64cbcc7d0cc5f291d55393fe9de8ca616a70af21d`
 - Authenticode expectation and result: `NotSigned`
 
-The artefact contains the installer, portable executable, individual SHA-256 checksums, machine-readable verification manifest, hardened-fuse record and separate smoke records for unpacked, portable and installed execution. It is a verified internal candidate. It is not eligible for trusted public promotion until a future native build has a valid Authenticode signature from the expected publisher.
+The artefact contains the installer, portable executable, individual SHA-256 checksums, machine-readable verification manifest, hardened-fuse record and separate smoke records for unpacked, portable and installed execution. It is a verified internal candidate. It may be exposed only as an explicitly unsigned GitHub pre-release with matching evidence and a SmartScreen warning. It is not eligible for trusted public promotion until a future native build has a valid Authenticode signature from the expected publisher.
 
 ## Checksum verification
 
@@ -106,9 +106,9 @@ Compare each value with `SHA256SUMS.txt` and `windows-verification.json`. A matc
 
 ## Authenticode signing
 
-The initial pipeline explicitly expects `NotSigned`. These outputs are internal test artefacts and may trigger Microsoft SmartScreen. They are not eligible for trusted public promotion.
+The initial pipeline explicitly expects `NotSigned`. These outputs are internal test artefacts or explicitly labelled pre-release packages and may trigger Microsoft SmartScreen. They are not eligible for trusted public promotion or the stable release channel.
 
-A public Windows release requires authorised signing credentials in a protected build environment, `Get-AuthenticodeSignature` status `Valid`, the expected publisher identity and a retained post-build verification result. Credentials must never be stored in source, artefacts or logs. The workflow must change its expected status to `Valid` only when that controlled signing path exists.
+A trusted or stable-channel Windows release requires authorised signing credentials in a protected build environment, `Get-AuthenticodeSignature` status `Valid`, the expected publisher identity and a retained post-build verification result. Credentials must never be stored in source, artefacts or logs. The workflow must change its expected status to `Valid` only when that controlled signing path exists.
 
 ## Known limits
 

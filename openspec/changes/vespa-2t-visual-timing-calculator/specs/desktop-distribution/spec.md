@@ -92,7 +92,7 @@ A Windows executable SHALL be described as verified only after a smoke test runs
 - **THEN** the artefact remains an unverified build and is not promoted
 
 ### Requirement: Explicit signing status and public-release gate
-Every Windows artefact SHALL state whether it is unsigned or Authenticode-signed. A checksum SHALL NOT be presented as a code signature. Unsigned artefacts MAY be retained for internal testing with a Microsoft SmartScreen limitation, but public distribution SHALL require a valid Authenticode signature from the expected publisher and successful post-build signature verification. Signing credentials SHALL remain outside source, artefacts, and logs.
+Every Windows artefact SHALL state whether it is unsigned or Authenticode-signed. A checksum SHALL NOT be presented as a code signature. Unsigned artefacts MAY be retained for internal testing or published only as an explicitly labelled GitHub pre-release with a Microsoft SmartScreen warning, checksums, verification evidence, and no trusted-release claim. Stable-channel or trusted public distribution SHALL require a valid Authenticode signature from the expected publisher and successful post-build signature verification. Signing credentials SHALL remain outside source, artefacts, and logs.
 
 #### Scenario: No signing certificate is configured
 - **WHEN** the native build succeeds without signing credentials
@@ -174,7 +174,7 @@ A macOS package SHALL be described as verified only after its thin Mach-O bundle
 - **THEN** verification fails and Rosetta execution is not accepted as native compatibility evidence
 
 ### Requirement: Explicit macOS signing and notarisation status
-Every macOS artefact SHALL report whether its final bundle is unsigned, ad-hoc signed, or Developer ID signed. An unsigned or ad-hoc signed artefact MAY be retained as an internal candidate but SHALL NOT be presented as publisher-identified, notarised, Gatekeeper-trusted, or publicly promotable. Public distribution SHALL require a strict valid Developer ID Application signature from the expected Apple Team ID, effective hardened runtime, Apple notarisation acceptance, stapled application and DMG tickets, and Gatekeeper acceptance under an active policy. Hashes, ad-hoc code integrity, publisher identity, notarisation, stapling, and Gatekeeper status SHALL remain separate evidence. Credentials SHALL remain outside source, artefacts, and logs.
+Every macOS artefact SHALL report whether its final bundle is unsigned, ad-hoc signed, or Developer ID signed. An unsigned or ad-hoc signed artefact MAY be retained as an internal candidate or published only as an explicitly labelled GitHub pre-release with Gatekeeper warnings, checksums, verification evidence, and no trusted-release claim. It SHALL NOT be presented as publisher-identified, notarised, Gatekeeper-trusted, or eligible for the stable release channel. Stable-channel or trusted public distribution SHALL require a strict valid Developer ID Application signature from the expected Apple Team ID, effective hardened runtime, Apple notarisation acceptance, stapled application and DMG tickets, and Gatekeeper acceptance under an active policy. Hashes, ad-hoc code integrity, publisher identity, notarisation, stapling, and Gatekeeper status SHALL remain separate evidence. Credentials SHALL remain outside source, artefacts, and logs.
 
 #### Scenario: No Apple distribution identity is configured
 - **WHEN** a native package is produced with no authorised Developer ID credentials
@@ -198,3 +198,18 @@ Release documentation SHALL distinguish Apple Silicon `arm64` and Intel `x64`, s
 #### Scenario: Use an internal candidate under Gatekeeper
 - **WHEN** an unsigned or ad-hoc signed internal package is downloaded and Gatekeeper does not identify an authorised publisher
 - **THEN** the documentation explains the limited internal status without recommending global Gatekeeper disablement
+
+### Requirement: Versioned preview download index
+The system SHALL provide a GitHub Wiki download page that identifies the current verified preview version and tag, lists only supported operating systems and architectures, links directly to version-specific tag release assets, and provides matching SHA-256 checksums and release evidence. An unsigned preview SHALL use GitHub pre-release status, SHALL NOT populate or claim the stable `latest` channel, and SHALL repeat Windows SmartScreen and macOS Gatekeeper, Developer ID, and notarisation limitations next to the downloads. The pre-release publish job SHALL depend on native verification for every listed platform and SHALL reconcile version, tag, source commit, byte size, package hash, signature classification, and manifest identity before creating the release. The workflow SHALL refuse to replace an existing release, but documentation SHALL NOT claim platform-enforced asset immutability unless the repository setting is separately verified.
+
+#### Scenario: Publish a verified unsigned preview
+- **WHEN** Windows x64, macOS ARM64, and macOS x64 packages pass their native gates from the same tagged commit and the aggregate reconciliation passes
+- **THEN** one GitHub pre-release exposes the versioned assets, platform checksums, consolidated checksums, manifests, and explicit untrusted-preview warnings
+
+#### Scenario: A platform or identity record is inconsistent
+- **WHEN** a native job fails or any package version, source commit, byte size, hash, architecture, signature state, or manifest differs from the release inputs
+- **THEN** the release is not created and the Wiki does not describe those inputs as the current verified preview
+
+#### Scenario: Select a preview download
+- **WHEN** a reader opens the Wiki download page
+- **THEN** the page distinguishes Windows x64, macOS Apple Silicon ARM64, and macOS Intel x64, provides recommended and alternative formats, and does not imply support for Windows ARM64, Windows x86, or Linux desktop
