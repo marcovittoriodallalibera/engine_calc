@@ -107,6 +107,8 @@ async function createFixture(root) {
           classification: "ad-hoc",
           developerId: false,
           teamIdentifier: "not set",
+          codesignDisplayStatus: 0,
+          codesignVerificationStatus: 0,
           hardenedRuntime: false,
           applicationGatekeeperAccepted: false,
           diskImageGatekeeperAccepted: false,
@@ -126,6 +128,7 @@ async function createFixture(root) {
               {
                 architectures: [architecture === "x64" ? "x86_64" : "arm64"],
                 codesignStatus: 0,
+                adHoc: true,
                 developerId: false,
                 teamIdentifier: "not set",
                 hardenedRuntime: false,
@@ -190,6 +193,33 @@ test("rejects a package changed after native verification", async () => {
         sourceCommit: SOURCE_COMMIT,
       }),
       /manifest hash/u,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("rejects a macOS manifest with an individually unsigned Mach-O", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "phase360-release-"));
+  const inputRoot = path.join(root, "input");
+  const outputDirectory = path.join(root, "output");
+  try {
+    await createFixture(inputRoot);
+    const manifestPath = path.join(inputRoot, "macos-x64", "macos-verification-x64.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.bundle.machOBinaries[0].codesignStatus = 1;
+    manifest.bundle.machOBinaries[0].adHoc = false;
+    manifest.bundle.machOBinaries[0].teamIdentifier = null;
+    await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
+    await assert.rejects(
+      preparePreviewRelease({
+        inputRoot,
+        outputDirectory,
+        version: VERSION,
+        tag: TAG,
+        sourceCommit: SOURCE_COMMIT,
+      }),
+      /x64 Mach-O evidence is inconsistent/u,
     );
   } finally {
     await rm(root, { recursive: true, force: true });

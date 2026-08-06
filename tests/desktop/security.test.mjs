@@ -100,10 +100,10 @@ test("desktop CSP and Electron package configuration fail closed", async () => {
   assert.equal(builderConfig.electronFuses.loadBrowserProcessSpecificV8Snapshot, false);
   assert.ok(builderConfig.files.includes("!node_modules{,/**/*}"));
   assert.deepEqual(builderConfig.mac.target, ["dmg", "zip"]);
-  assert.equal(builderConfig.mac.identity, null);
+  assert.equal(builderConfig.mac.identity, "-");
   assert.equal(builderConfig.mac.notarize, false);
   assert.equal(builderConfig.mac.forceCodeSigning, false);
-  assert.equal(builderConfig.mac.hardenedRuntime, true);
+  assert.equal(builderConfig.mac.hardenedRuntime, false);
   assert.equal(builderConfig.mac.minimumSystemVersion, "12.0");
   assert.equal(
     builderConfig.mac.artifactName,

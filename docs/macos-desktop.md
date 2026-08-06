@@ -37,7 +37,7 @@ The macOS and Windows packages share the same Electron controls:
 - embedded ASAR integrity and application-only ASAR loading
 - hardened Electron fuses verified from the packaged executable
 
-On Apple Silicon the fuse step resets the required ad-hoc signature after changing the Electron binary. This permits local execution and code-integrity verification but does not identify an authorised publisher.
+After changing the Electron fuse wire, the packaging step applies an explicit ad-hoc signature to the complete application bundle on both architectures. The native verifier requires every Mach-O to retain valid ad-hoc code integrity. This permits local execution and code-integrity verification but does not identify an authorised publisher.
 
 ## Local build
 

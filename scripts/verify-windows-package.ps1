@@ -194,7 +194,13 @@ $ChecksumLines = $Artefacts | ForEach-Object { "$($_.sha256)  $($_.file)" }
 $ChecksumLines | Set-Content -LiteralPath (Join-Path $ResolvedDist "SHA256SUMS.txt") -Encoding utf8
 
 $RootPackage = Get-Content -LiteralPath (Join-Path $ProjectRoot "package.json") -Raw | ConvertFrom-Json
-$Commit = if ($env:GITHUB_SHA) { $env:GITHUB_SHA } else { (& git -C $ProjectRoot rev-parse HEAD).Trim() }
+$Commit = (& git -C $ProjectRoot rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $Commit) {
+  throw "Unable to resolve the checked-out source commit."
+}
+if ($env:GITHUB_SHA -and $env:GITHUB_SHA -ne $Commit) {
+  throw "Checked-out commit '$Commit' does not match GITHUB_SHA '$($env:GITHUB_SHA)'."
+}
 $Verification = [ordered]@{
   schemaVersion = 1
   verifiedAtUtc = [DateTime]::UtcNow.ToString("o")

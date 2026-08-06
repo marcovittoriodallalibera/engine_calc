@@ -318,14 +318,26 @@ function assertSignaturePolicy(signature, options, machOBinaries) {
 
   if (options.expectedSignature === "unsigned") {
     if (
-      !["unsigned", "ad-hoc"].includes(signature.classification) ||
+      signature.classification !== "ad-hoc" ||
       signature.developerId ||
-      (signature.teamIdentifier && signature.teamIdentifier !== "not set") ||
+      signature.teamIdentifier !== "not set" ||
+      signature.codesignDisplayStatus !== 0 ||
+      signature.codesignVerificationStatus !== 0 ||
+      signature.hardenedRuntime ||
       signature.applicationNotaryTicket ||
-      signature.diskImageNotaryTicket
+      signature.diskImageNotaryTicket ||
+      machOBinaries.some(
+        (binary) =>
+          binary.codesignStatus !== 0 ||
+          binary.adHoc !== true ||
+          binary.developerId !== false ||
+          binary.teamIdentifier !== "not set" ||
+          binary.hardenedRuntime !== false ||
+          binary.getTaskAllow !== false,
+      )
     ) {
       throw new Error(
-        "Expected an unsigned or ad-hoc internal candidate, but publisher or notarisation evidence was present.",
+        "Expected a completely ad-hoc signed candidate without publisher, hardened-runtime, debug-entitlement, or notarisation evidence.",
       );
     }
     return;
@@ -492,6 +504,7 @@ async function main() {
       path: path.relative(unpackedApp, candidate),
       architectures,
       codesignStatus: codeSignature.status,
+      adHoc: /Signature=adhoc/mu.test(codeSignatureDetail),
       developerId: /^Authority=Developer ID Application:/mu.test(
         codeSignatureDetail,
       ),
@@ -704,7 +717,7 @@ async function main() {
       note:
         options.expectedSignature === "developer-id"
           ? "Developer ID identity, hardened runtime, Gatekeeper acceptance and stapled notary tickets verified."
-          : "Unsigned or ad-hoc internal test artefact. SHA-256 is not publisher identity and the package is not notarised.",
+          : "Completely ad-hoc signed internal test artefact. SHA-256 and ad-hoc code integrity are not publisher identity, and the package is not notarised.",
     },
     dependencyAudit: "passed",
     bundle: {

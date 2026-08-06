@@ -151,6 +151,8 @@ function validateMacManifest(manifest, architecture) {
   requireEqual(manifest.signature?.classification, "ad-hoc", `${architecture} signature`);
   requireEqual(manifest.signature?.developerId, false, `${architecture} Developer ID state`);
   requireEqual(manifest.signature?.teamIdentifier, "not set", `${architecture} Team ID`);
+  requireEqual(manifest.signature?.codesignDisplayStatus, 0, `${architecture} codesign display`);
+  requireEqual(manifest.signature?.codesignVerificationStatus, 0, `${architecture} codesign verification`);
   requireEqual(manifest.signature?.hardenedRuntime, false, `${architecture} hardened runtime`);
   requireEqual(
     manifest.signature?.applicationGatekeeperAccepted,
@@ -202,6 +204,7 @@ function validateMacManifest(manifest, architecture) {
       binary.architectures.length !== 1 ||
       binary.architectures[0] !== machineArchitecture ||
       binary.codesignStatus !== 0 ||
+      binary.adHoc !== true ||
       binary.developerId !== false ||
       binary.teamIdentifier !== "not set" ||
       binary.hardenedRuntime !== false ||
