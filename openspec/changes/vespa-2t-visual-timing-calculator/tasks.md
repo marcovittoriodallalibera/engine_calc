@@ -195,7 +195,7 @@
 - [x] 14.2 Add a native macOS application, edit, and window menu with standard roles and no packaged reload or developer-tools entry
 - [x] 14.3 Add a native macOS verifier for every Mach-O architecture, bundle metadata, DMG integrity, ZIP extraction, Electron fuses, code integrity, signing state, notarisation, Gatekeeper, checksums, and packaged-format smoke tests
 - [x] 14.4 Add lockfile-based native `macos-15` ARM64 and `macos-15-intel` x64 workflow jobs with immutable actions and architecture-specific retained artefacts
-- [ ] 14.5 Run native ARM64 and Intel smoke tests against the unpacked, DMG-contained, and ZIP-contained applications
-- [ ] 14.6 Record exact hashes, source commit, runner and macOS versions, architectures, dependency audit, fuses, package smoke evidence, signature classification, Apple Team ID, notary tickets, and Gatekeeper state for both architectures
+- [x] 14.5 Run native ARM64 and Intel smoke tests against the unpacked, DMG-contained, and ZIP-contained applications
+- [x] 14.6 Record exact hashes, source commit, runner and macOS versions, architectures, dependency audit, fuses, package smoke evidence, signature classification, Apple Team ID, notary tickets, and Gatekeeper state for both architectures
 - [x] 14.7 Document installation, architecture selection, internal ad-hoc and Gatekeeper limits, local-data behaviour, and checksum verification without recommending global Gatekeeper disablement
 - [x] 14.8 Block public promotion unless the expected Developer ID Application and Team ID, strict signature, effective hardened runtime, notarisation, stapled app and DMG tickets, and active Gatekeeper acceptance all pass

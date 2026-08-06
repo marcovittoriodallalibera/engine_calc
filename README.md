@@ -130,3 +130,5 @@ node scripts/verify-macos-package.mjs --dist-dir desktop-dist --arch arm64 --exp
 Each native workflow opens the unpacked application, mounted DMG and extracted ZIP, verifies every Mach-O architecture, checks the Electron fuses and bundle integrity, and emits architecture-specific SHA-256 checksums and a machine-readable verification record.
 
 The initial Mac packages are ad-hoc signed and not notarised. They are internal verification candidates, identify no authorised publisher, and may be stopped by Gatekeeper after download. Public distribution requires the expected Developer ID Application and Apple Team ID, effective hardened runtime, accepted notarisation, stapled tickets and active Gatekeeper acceptance. See [macOS desktop distribution](docs/macos-desktop.md).
+
+The first verified internal ARM64 and Intel candidates are retained by [GitHub Actions run 31079396042](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31079396042) for source commit `cc3ac36caf7791f4143f3b2c5587de556708bb1f`.

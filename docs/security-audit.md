@@ -1,6 +1,6 @@
 # Security audit
 
-Audit date: 5 August 2026
+Audit date: 6 August 2026
 
 ## Scope
 
@@ -22,7 +22,7 @@ This review covers the Phase 360 browser application, its project import and loc
 - An exact HTTPS origin allowlist opens methodology references only in the system browser. Local downloads are limited to user-initiated JSON and SVG Blob URLs with bounded safe filenames.
 - The desktop CSP denies remote connections, inline scripts, evaluation, objects, forms, frames, workers and media. Sanitised clipboard write is the only permission exception and is scoped to the packaged workbench for the explicit Share action.
 - The packaging configuration enables embedded ASAR integrity validation, loads application code only from ASAR, disables run-as-Node, Node option and inspect inputs, disables extra `file` privileges, and retains WebAssembly trap handlers. Automated verification reads the final executable fuse wire rather than trusting configuration alone.
-- The macOS workflow is configured to produce separate ARM64 and x64 packages on matching native runners. The verifier rejects translated or mixed-architecture evidence, checks every executable Mach-O slice, verifies DMG and ZIP contents independently, and records code signature, Team ID, hardened-runtime, notary-ticket and Gatekeeper state separately. Both native workflow jobs remain a release gate until their retained evidence is recorded below.
+- The macOS workflow produces separate ARM64 and x64 packages on matching native runners. The verifier rejects translated or mixed-architecture evidence, checks every executable Mach-O slice, verifies DMG and ZIP contents independently, and records code signature, Team ID, hardened-runtime, notary-ticket and Gatekeeper state separately. Both native jobs passed and their retained evidence is recorded below.
 - The Apple Silicon fuse step restores the ad-hoc signature required after changing the Electron binary. The resulting internal package has code integrity but no authorised publisher identity.
 - Packaged macOS menus expose only standard application, editing and window roles. Reload and developer-tools roles are absent and no preload or IPC surface was introduced.
 
@@ -32,6 +32,15 @@ This review covers the Phase 360 browser application, its project import and loc
 - Job `92435062574` passed the dependency audit, complete test suite, native x64 package build, fuse inspection, unpacked smoke, portable smoke, per-user installation, installed smoke and uninstall check.
 - Retained artefact `phase-360-windows-x64-6172a3b6d225417f06d9c001921010d1258ba37b`, artefact ID `8945782800`, has GitHub archive digest `sha256:572dd7e282fd0921268153a64cbcc7d0cc5f291d55393fe9de8ca616a70af21d`.
 - The retained `SHA256SUMS.txt` and `windows-verification.json` bind the individual installer and portable executable hashes, byte sizes, architecture, toolchain, smoke records, fuse record and `NotSigned` Authenticode status to the same commit.
+
+## Native macOS verification evidence
+
+- [GitHub Actions run 31079396042](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31079396042) completed successfully for source commit `cc3ac36caf7791f4143f3b2c5587de556708bb1f`.
+- ARM64 job `92544516704` passed on the native `macos-15` runner. Intel job `92544514358` passed on the native `macos-15-intel` runner. Both passed the dependency audit, complete test suite, native package build, full Mach-O scan, fuse inspection, bundle-equivalence check, and unpacked, DMG and ZIP smoke tests.
+- Retained ARM64 artefact `phase-360-macos-arm64-cc3ac36caf7791f4143f3b2c5587de556708bb1f`, artefact ID `8958878074`, has GitHub archive digest `sha256:62c8bb0f66e4faa7f641bb67dc3f48d6d200f0a5024d6e25523dd91ddb451bc6`.
+- Retained Intel artefact `phase-360-macos-x64-cc3ac36caf7791f4143f3b2c5587de556708bb1f`, artefact ID `8958927081`, has GitHub archive digest `sha256:a12de1e853c95b55b942b744b796b016d6668c053462d1ef03b3c025084dda09`.
+- The retained architecture-specific checksum and verification records bind the individual DMG and ZIP hashes, byte sizes, complete bundle manifests, native architecture, macOS 15 runner class, toolchain, smoke records, fuse records, ad-hoc signature classification, absent Team ID, absent notary tickets and recorded Gatekeeper state to the same commit.
+- The shared desktop changes also passed native Windows x64 regression run [31079396055](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31079396055), job `92544515296`.
 
 ## Positive controls
 
@@ -46,7 +55,7 @@ This review covers the Phase 360 browser application, its project import and loc
 
 - Browser project data is intentionally stored in plain text local storage. It can be read by software with access to the browser profile or by a future same-origin script vulnerability. Sensitive projects should be explicitly exported and cleared after use.
 - The server-rendered application currently needs inline bootstrap scripts, so the web Content Security Policy retains `script-src 'unsafe-inline'`. No exploitable injection sink was found, but a future nonce or hash integration would provide stronger defence in depth.
-- The native Windows evidence verifies the packaged x64 candidate and the local macOS ARM64 smoke remains useful secondary implementation evidence. Compatibility outside the recorded Windows x64 runner is not claimed.
+- The native evidence verifies the packaged Windows x64, macOS ARM64 and macOS Intel candidates on the recorded runner classes. Compatibility outside those environments is not claimed.
 - A Windows build without an Authenticode certificate is technically runnable but remains unsigned and may trigger Microsoft SmartScreen. Every artefact must at least ship with a SHA-256 checksum. Public distribution should require a valid Authenticode signature.
 - The verified Windows executable is an internal candidate, not a trusted public release. A future public build must repeat the native checks and additionally record a valid Authenticode signature from the expected publisher.
 - The initial macOS packages are ad-hoc signed and not notarised. They may be stopped by Gatekeeper after download and remain internal candidates until the expected Developer ID Application and Apple Team ID, effective hardened runtime, accepted notarisation, stapled tickets and active Gatekeeper acceptance are all verified.
@@ -63,4 +72,4 @@ node scripts/verify-macos-package.mjs --dist-dir desktop-dist --arch arm64 --exp
 git diff --check
 ```
 
-The Windows executable additionally requires `scripts/verify-windows-package.ps1` on the native Windows output before it can be described as verified. The evidence above records the first successful native execution of that gate. Each Mac architecture requires `scripts/verify-macos-package.mjs` on a matching native runner and a retained architecture-specific manifest before it can be described as verified.
+The Windows executable additionally requires `scripts/verify-windows-package.ps1` on the native Windows output before it can be described as verified. Each Mac architecture requires `scripts/verify-macos-package.mjs` on a matching native runner and a retained architecture-specific manifest. The evidence above records successful native execution of these gates.

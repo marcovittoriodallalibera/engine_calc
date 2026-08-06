@@ -71,6 +71,18 @@ For version `0.1.0`, each architecture produces:
 
 The GitHub workflow uses `macos-15` for ARM64 and `macos-15-intel` for x64. Each job installs the lockfile, audits dependencies, runs the complete test suite, builds only its native architecture, verifies the final packages and retains one architecture-labelled artefact.
 
+## Native verification evidence
+
+[GitHub Actions run 31079396042](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31079396042) completed successfully for source commit `cc3ac36caf7791f4143f3b2c5587de556708bb1f`:
+
+- ARM64 job `92544516704` ran natively on the `macos-15` Apple Silicon image and completed successfully.
+- Intel job `92544514358` ran natively on the `macos-15-intel` x64 image and completed successfully.
+- ARM64 artefact `phase-360-macos-arm64-cc3ac36caf7791f4143f3b2c5587de556708bb1f`, artefact ID `8958878074`, has GitHub archive digest `sha256:62c8bb0f66e4faa7f641bb67dc3f48d6d200f0a5024d6e25523dd91ddb451bc6`.
+- Intel artefact `phase-360-macos-x64-cc3ac36caf7791f4143f3b2c5587de556708bb1f`, artefact ID `8958927081`, has GitHub archive digest `sha256:a12de1e853c95b55b942b744b796b016d6668c053462d1ef03b3c025084dda09`.
+- The retained architecture-specific checksum, verification, fuse and smoke records bind the individual DMG and ZIP hashes, complete bundle manifests, native architecture, macOS 15 runner class, toolchain, dependency audit, package smoke results, ad-hoc signature classification, absent Apple Team ID, absent notary tickets and recorded Gatekeeper state to that commit.
+
+These artefacts expire on 5 September 2026 under the workflow's 30-day retention policy. They are verified internal candidates, not trusted public releases.
+
 ## Native package verification
 
 The verifier must run on the matching native architecture:
