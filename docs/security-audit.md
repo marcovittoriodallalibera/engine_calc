@@ -1,6 +1,6 @@
 # Security audit
 
-Audit date: 6 August 2026
+Audit date: 7 August 2026
 
 ## Scope
 
@@ -22,18 +22,18 @@ This review covers the Phase 360 browser application, its project import and loc
 - An exact HTTPS origin allowlist opens methodology references only in the system browser. Local downloads are limited to user-initiated JSON and SVG Blob URLs with bounded safe filenames.
 - The desktop CSP denies remote connections, inline scripts, evaluation, objects, forms, frames, workers and media. Sanitised clipboard write is the only permission exception and is scoped to the packaged workbench for the explicit Share action.
 - The packaging configuration enables embedded ASAR integrity validation, loads application code only from ASAR, disables run-as-Node, Node option and inspect inputs, disables extra `file` privileges, and retains WebAssembly trap handlers. Automated verification reads the final executable fuse wire rather than trusting configuration alone.
-- The macOS workflow produces separate ARM64 and x64 packages on matching native runners. The verifier rejects translated or mixed-architecture evidence, checks every executable Mach-O slice, verifies DMG and ZIP contents independently, and records code signature, Team ID, hardened-runtime, notary-ticket and Gatekeeper state separately. Both native jobs passed and their retained evidence is recorded below.
+- The macOS workflow produces separate ARM64 and x64 packages on matching native runners. The verifier rejects translated or mixed-architecture evidence, checks every executable Mach-O slice, verifies DMG and ZIP contents independently, and records code signature, Team ID, hardened-runtime, notary-ticket and Gatekeeper state separately. Historical native evidence and the current tagged release evidence are recorded below.
 - After the Electron fuse step, macOS packaging explicitly ad-hoc signs the complete application bundle on both architectures. Native verification requires every Mach-O to retain valid ad-hoc code integrity, with no authorised publisher identity, Team ID, hardened runtime or notarisation ticket.
 - Packaged macOS menus expose only standard application, editing and window roles. Reload and developer-tools roles are absent and no preload or IPC surface was introduced.
 
-## Native Windows verification evidence
+## Historical native Windows verification evidence
 
 - [GitHub Actions run 31044034676](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31044034676) completed successfully on the `windows-latest` runner for source commit `6172a3b6d225417f06d9c001921010d1258ba37b`.
 - Job `92435062574` passed the dependency audit, complete test suite, native x64 package build, fuse inspection, unpacked smoke, portable smoke, per-user installation, installed smoke and uninstall check.
 - Retained artefact `phase-360-windows-x64-6172a3b6d225417f06d9c001921010d1258ba37b`, artefact ID `8945782800`, has GitHub archive digest `sha256:572dd7e282fd0921268153a64cbcc7d0cc5f291d55393fe9de8ca616a70af21d`.
 - The retained `SHA256SUMS.txt` and `windows-verification.json` bind the individual installer and portable executable hashes, byte sizes, architecture, toolchain, smoke records, fuse record and `NotSigned` Authenticode status to the same commit.
 
-## Native macOS verification evidence
+## Historical native macOS verification evidence
 
 - [GitHub Actions run 31079396042](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31079396042) completed successfully for source commit `cc3ac36caf7791f4143f3b2c5587de556708bb1f`.
 - ARM64 job `92544516704` passed on the native `macos-15` runner. Intel job `92544514358` passed on the native `macos-15-intel` runner. Both passed the dependency audit, complete test suite, native package build, full Mach-O scan, fuse inspection, bundle-equivalence check, and unpacked, DMG and ZIP smoke tests.
@@ -42,7 +42,17 @@ This review covers the Phase 360 browser application, its project import and loc
 - The retained architecture-specific checksum and verification records bind the individual DMG and ZIP hashes, byte sizes, complete bundle manifests, native architecture, macOS 15 runner class, toolchain, smoke records, fuse records, ad-hoc signature classification, absent Team ID, absent notary tickets and recorded Gatekeeper state to the same commit.
 - The shared desktop changes also passed native Windows x64 regression run [31079396055](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31079396055), job `92544515296`.
 
-## Public desktop preview evidence
+## Public desktop pre-release evidence: 0.1.1 preview 1
+
+- [GitHub Actions release run 31134974036](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31134974036) completed successfully for tag `v0.1.1-preview.1` and source commit `88889fad25ac90d344006adcecc4720f7f3c2820`.
+- Windows x64 job `92732197361`, native Apple Silicon job `92732197376`, native Intel Mac job `92732197331`, and aggregate publish job `92732929837` all completed successfully.
+- [Phase 360 0.1.1 preview 1](https://github.com/marcovittoriodallalibera/engine_calc/releases/tag/v0.1.1-preview.1), release ID `366451815`, was published on 7 August 2026 at 00:36:28 UTC. It is public, non-draft and explicitly marked as a pre-release. It is not the stable `latest` release.
+- The release contains six application packages and eight checksum or machine-readable evidence files. Every asset is uploaded, has a non-zero byte size, exposes a public SHA-256 digest, and returned HTTP 200 after redirects.
+- `RELEASE-EVIDENCE.json` records version `0.1.1`, tag `v0.1.1-preview.1`, source commit `88889fad25ac90d344006adcecc4720f7f3c2820`, `trustedPublicRelease: false`, unsigned Windows status, and ad-hoc, non-notarised macOS status.
+- Directly recalculated SHA-256 hashes and measured byte sizes for all 14 downloaded assets match GitHub's public asset metadata. The six application packages also match the native platform manifests, platform checksum files, `SHA256SUMS-release.txt`, and `RELEASE-EVIDENCE.json`.
+- Annotated tag object `1bcee1c9b9d3a6247ec8bf8f3e2d6f4264ec72b1` resolves to source commit `88889fad25ac90d344006adcecc4720f7f3c2820`. The candidate GitHub Wiki source is tracked in this repository, but the separate `engine_calc.wiki.git` remote did not exist at verification time and is not claimed as published.
+
+## Historical public desktop preview evidence: 0.1.0 preview 3
 
 - [GitHub Actions release run 31084404789](https://github.com/marcovittoriodallalibera/engine_calc/actions/runs/31084404789) completed successfully for tagged source commit `a12e4c620cf1d0a47fc5b1784af48a840c549f8e`.
 - Windows x64 job `92560367497`, native Apple Silicon job `92560367584`, native Intel Mac job `92560367556`, and aggregate publish job `92561363515` all completed successfully. Each native job repeated the dependency audit, complete test suite, package build, native verification and package smoke checks before publication was possible.

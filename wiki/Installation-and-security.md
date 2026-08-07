@@ -1,6 +1,6 @@
 # Installation and security
 
-Phase 360 0.1.1 preview 1 is a release candidate awaiting native GitHub verification and publication. It must not be described as published, stable, verified or trusted until that workflow and its public assets have been checked.
+Phase 360 0.1.1 preview 1 has passed native package verification and is published as a GitHub pre-release. It does not carry a verified publisher identity and must not be described as stable or trusted.
 
 ## Windows x64
 
@@ -45,4 +45,4 @@ For the recorded native checks and residual risks, read the [security audit](htt
 
 ## Updating
 
-Phase 360 does not currently update itself. Return to [Downloads](Downloads) for the version explicitly listed as the latest verified preview. Export important projects as JSON before replacing the application.
+Phase 360 does not currently update itself. Return to [Downloads](Downloads) for the version explicitly listed as the latest verified desktop pre-release. Export important projects as JSON before replacing the application.

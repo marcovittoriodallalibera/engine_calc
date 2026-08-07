@@ -215,5 +215,5 @@
 - [x] 16.2 Distil the timing, character, rotary-area, time-area, signature, and transmission graphs while preserving numeric tables, uncertainty, keyboard access, print output, and calculated content
 - [x] 16.3 Run an independent full-workbench UX and UI review with a creative-director brief, correct every material finding, and complete one bounded confirmation review
 - [x] 16.4 Pass the complete application suite, strict OpenSpec validation, desktop and mobile visual inspection, bounded chart-overflow checks, keyboard checks, and print inspection on the final release candidate
-- [ ] 16.5 Increment the application version, update version-specific download documentation, commit and push the verified source, and publish a new tag-triggered GitHub preview for Windows x64, macOS ARM64, and macOS x64
-- [ ] 16.6 Verify the final GitHub workflow conclusion, release status, source tag and commit identity, every application asset, checksums, machine-readable evidence, and the remote `main` SHA
+- [x] 16.5 Increment the application version, update version-specific download documentation, commit and push the verified source, and publish a new tag-triggered GitHub preview for Windows x64, macOS ARM64, and macOS x64
+- [x] 16.6 Verify the final GitHub workflow conclusion, release status, source tag and commit identity, every application asset, checksums, machine-readable evidence, and the remote `main` SHA
