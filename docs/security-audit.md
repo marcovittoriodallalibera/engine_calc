@@ -50,7 +50,9 @@ This review covers the Phase 360 browser application, its project import and loc
 - The release contains six application packages and eight checksum or machine-readable evidence files. Every asset is uploaded, has a non-zero byte size, exposes a public SHA-256 digest, and returned HTTP 200 after redirects.
 - `RELEASE-EVIDENCE.json` records version `0.1.1`, tag `v0.1.1-preview.1`, source commit `88889fad25ac90d344006adcecc4720f7f3c2820`, `trustedPublicRelease: false`, unsigned Windows status, and ad-hoc, non-notarised macOS status.
 - Directly recalculated SHA-256 hashes and measured byte sizes for all 14 downloaded assets match GitHub's public asset metadata. The six application packages also match the native platform manifests, platform checksum files, `SHA256SUMS-release.txt`, and `RELEASE-EVIDENCE.json`.
-- Annotated tag object `1bcee1c9b9d3a6247ec8bf8f3e2d6f4264ec72b1` resolves to source commit `88889fad25ac90d344006adcecc4720f7f3c2820`. The candidate GitHub Wiki source is tracked in this repository, but the separate `engine_calc.wiki.git` remote did not exist at verification time and is not claimed as published.
+- Annotated tag object `1bcee1c9b9d3a6247ec8bf8f3e2d6f4264ec72b1` resolves to source commit `88889fad25ac90d344006adcecc4720f7f3c2820`.
+- The [GitHub Wiki](https://github.com/marcovittoriodallalibera/engine_calc/wiki) is published from `engine_calc.wiki.git` commit `8a467d042788d3f356a66817c38c2178c6692984`. Its Home, Downloads, Installation and security, and sidebar pages match the candidate source tracked in repository commit `4a501a62cf7f5db89310278c6aa40c1fdf4ae235`.
+- The three public Wiki pages and all 20 distinct link targets referenced by the four Wiki source files returned HTTP 200 after redirects. This includes every supported application download, release page, checksum and aggregate evidence link, repository document, and internal Wiki destination.
 
 ## Historical public desktop preview evidence: 0.1.0 preview 3
 
