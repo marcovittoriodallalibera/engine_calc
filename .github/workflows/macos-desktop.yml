@@ -70,7 +70,16 @@ jobs:
           [[ -z "$(git ls-files --others --exclude-standard)" ]]
 
       - name: Build DMG and ZIP
-        run: npm run desktop:dist:mac -- --${{ matrix.architecture }}
+        shell: bash
+        env:
+          DEBUG_DMG: "true"
+        run: |
+          if npm run desktop:dist:mac -- --${{ matrix.architecture }}; then
+            exit 0
+          fi
+          echo "::warning title=Retrying macOS packaging::The first packaging attempt failed. Cleaning generated output and retrying once."
+          node -e "require('node:fs').rmSync('desktop-dist', { recursive: true, force: true })"
+          npm run desktop:dist:mac -- --${{ matrix.architecture }}
 
       - name: Verify packages natively
         run: >-
