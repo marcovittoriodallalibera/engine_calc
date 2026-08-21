@@ -25,6 +25,7 @@ import {
   type PortAnalysis,
 } from "@/lib/presentation/analyse-project";
 import {
+  MAX_PROJECT_BYTES,
   MAX_SHARE_FRAGMENT_LENGTH,
   PROJECT_STORAGE_KEY,
   changeRotaryMeasuredArc,
@@ -46,6 +47,13 @@ import {
   clearProjectFromStorage,
   loadProjectFromStorage,
 } from "@/lib/project/browser";
+
+const portKindOptions: Array<{ value: PortDraft["kind"]; label: string }> = [
+  { value: "exhaust", label: "Exhaust" },
+  { value: "primary-transfer", label: "Primary transfer" },
+  { value: "secondary-transfer", label: "Secondary transfer" },
+  { value: "boost-transfer", label: "Boost transfer" },
+];
 
 const sourceOptions: Array<{ value: PortSourceMode; label: string }> = [
   { value: "travel-from-tdc", label: "Roof travel from TDC" },
@@ -617,6 +625,24 @@ function PortEditor({
               maxLength={60}
               onChange={(event) => onUpdate({ label: event.target.value })}
             />
+          </span>
+        </label>
+
+        <label className="field">
+          <span className="field-label">Port type</span>
+          <span className="select-shell">
+            <select
+              value={port.kind}
+              onChange={(event) =>
+                onUpdate({ kind: event.target.value as PortDraft["kind"] })
+              }
+            >
+              {portKindOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </span>
         </label>
 
@@ -2094,15 +2120,19 @@ export function EngineWorkbench({
     ) {
       nextSaveState = "invalid";
     } else {
-      try {
-        window.localStorage.setItem(
-          PROJECT_STORAGE_KEY,
-          serialiseProject(portableProject.project),
-        );
-        nextSaveState = "saved";
-      } catch {
-        nextSaveState = "unavailable";
-        saveFailureMessage = "Automatic local save is unavailable in this browser.";
+      const payload = serialiseProject(portableProject.project);
+      if (new TextEncoder().encode(payload).byteLength > MAX_PROJECT_BYTES) {
+        nextSaveState = "invalid";
+        saveFailureMessage =
+          "This project is too large to save locally. Remove some ports or shorten the engine notes.";
+      } else {
+        try {
+          window.localStorage.setItem(PROJECT_STORAGE_KEY, payload);
+          nextSaveState = "saved";
+        } catch {
+          nextSaveState = "unavailable";
+          saveFailureMessage = "Automatic local save is unavailable in this browser.";
+        }
       }
     }
 
@@ -2441,7 +2471,7 @@ export function EngineWorkbench({
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (file.size > 48_000) {
+    if (file.size > MAX_PROJECT_BYTES) {
       setActionStatus("Import rejected: the project file is too large.");
       return;
     }
@@ -4543,9 +4573,11 @@ export function EngineWorkbench({
                 <div>
                   <dt>Inlet area source</dt>
                   <dd>
-                    {project.induction.areaSource === "cylindrical-overlap"
-                      ? `Arc overlap, ${formatSourceValue(project.induction.commonAxialOverlapWidthMm, "mm axial width")}`
-                      : `Constant estimate, ${formatSourceValue(project.induction.effectiveWindowAreaMm2, "mm²")}`}
+                    {project.induction.mode === "rotary"
+                      ? project.induction.areaSource === "cylindrical-overlap"
+                        ? `Arc overlap, ${formatSourceValue(project.induction.commonAxialOverlapWidthMm, "mm axial width")}`
+                        : `Constant estimate, ${formatSourceValue(project.induction.effectiveWindowAreaMm2, "mm²")}`
+                      : "Not applicable"}
                   </dd>
                 </div>
                 <div>

@@ -621,3 +621,143 @@ test("every advisory exposes complete claim, provenance and scope metadata", () 
     }
   }
 });
+
+test("an invalid port is reported rather than silently dropped", () => {
+  const project = cloneDemonstrationProject();
+  const exhaust = project.ports.find((port) => port.kind === "exhaust");
+  assert.ok(exhaust);
+  exhaust.sourceMode = "opening-angle";
+  exhaust.sourceValue = "200";
+
+  const result = analyseProject(project);
+
+  assert.equal(result.exhaust, null);
+  assert.equal(
+    result.ports.some((port) => port.kind === "exhaust"),
+    false,
+  );
+  const notice = result.diagnostics.find((message) =>
+    message.includes("excluded from the analysis"),
+  );
+  assert.ok(notice, "a dropped port must name itself in the diagnostics");
+  assert.ok(notice.includes(exhaust.label));
+  assert.ok(
+    notice.includes("180"),
+    "the kernel reason must survive into the message",
+  );
+});
+
+test("an unparseable port position reports a reason", () => {
+  const project = cloneDemonstrationProject();
+  project.ports[0].sourceValue = "not a number";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("numeric port position"),
+    ),
+  );
+});
+
+test("roof depth without a crown position explains what is missing", () => {
+  const project = cloneDemonstrationProject();
+  project.geometry.deckPositionMm = "";
+  project.ports[0].sourceMode = "depth-from-deck";
+  project.ports[0].sourceValue = "30";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("piston crown position at TDC"),
+    ),
+  );
+});
+
+test("a bowl wider than the bore is rejected instead of rendered", () => {
+  const project = cloneDemonstrationProject();
+  project.squish.geometryMode = "bowl-diameter";
+  project.squish.bowlDiameterMm = "999";
+
+  const result = analyseProject(project);
+
+  assert.equal(result.squish.areaPercent, null);
+  assert.ok(
+    result.diagnostics.length > 0,
+    "an impossible bowl diameter must produce a diagnostic",
+  );
+});
+
+test("an incomplete component breakdown names the missing volumes", () => {
+  const project = cloneDemonstrationProject();
+  project.compression.volumeMode = "component-breakdown";
+  project.compression.deckVolumeCc = "";
+
+  const result = analyseProject(project);
+
+  assert.equal(result.compression.geometricRatio, null);
+  const notice = result.diagnostics.find((message) =>
+    message.includes("Component breakdown"),
+  );
+  assert.ok(notice);
+  assert.ok(notice.includes("deck"));
+});
+
+test("a negative clearance volume is reported", () => {
+  const project = cloneDemonstrationProject();
+  project.compression.volumeMode = "component-breakdown";
+  project.compression.pistonCrownVolumeCc = "-99";
+
+  const result = analyseProject(project);
+
+  assert.equal(result.compression.geometricRatio, null);
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("positive volume"),
+    ),
+  );
+});
+
+test("band-width mode without a band width does not silently use the bowl", () => {
+  const project = cloneDemonstrationProject();
+  project.squish.geometryMode = "band-width";
+  project.squish.bandWidthMm = "";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("squish band width"),
+    ),
+  );
+});
+
+test("partial squish gap measurements are flagged", () => {
+  const project = cloneDemonstrationProject();
+  project.squish.gapEastMm = "";
+  project.squish.gapWestMm = "";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) => message.includes("2 of 4")),
+  );
+});
+
+test("a second exhaust port is reported as area-only", () => {
+  const project = cloneDemonstrationProject();
+  const secondary = project.ports.find(
+    (port) => port.kind === "secondary-transfer",
+  );
+  assert.ok(secondary);
+  secondary.kind = "exhaust";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("port area only"),
+    ),
+  );
+});
