@@ -15,7 +15,9 @@ import TimingDial, {
 } from "@/components/timing-dial";
 import {
   ENGINE_CHARACTER_PROFILES,
+  cylindricalVolumeCc,
   evaluateCompressionScenario,
+  integrateRotaryOverlapArea,
   type TransmissionResult,
 } from "@/lib/engine";
 import {
@@ -312,6 +314,15 @@ interface NumberFieldProps {
   integer?: boolean;
   required?: boolean;
   validationMessage?: string | null;
+  /**
+   * A value calculable from other entered geometry. Offered as a suggestion the
+   * user can apply, because a direct measurement stays authoritative.
+   */
+  derived?: {
+    value: number;
+    unit: string;
+    description: string;
+  } | null;
 }
 
 function NumberField({
@@ -329,6 +340,7 @@ function NumberField({
   integer,
   required,
   validationMessage,
+  derived,
 }: NumberFieldProps) {
   const numericValue = parseLocaleNumber(value);
   let errorMessage: string | null = null;
@@ -397,8 +409,24 @@ function NumberField({
           {errorMessage}
         </span>
       ) : null}
+      {derived && !matchesDerived(numericValue, derived.value) ? (
+        <span className="field-derived">
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => onChange(String(Number(derived.value.toFixed(4))))}
+          >
+            Use {formatNumber(derived.value, 2)} {derived.unit}
+          </button>
+          <small>{derived.description}</small>
+        </span>
+      ) : null}
     </label>
   );
+}
+
+function matchesDerived(current: number | null, derived: number): boolean {
+  return current !== null && Math.abs(current - derived) < 5e-5;
 }
 
 interface MetricProps {
@@ -2338,6 +2366,23 @@ export function EngineWorkbench({
   function updatePort(id: string, patch: Partial<PortDraft>) {
     noteEdit();
     let resolvedPatch = patch;
+    if (patch.kind && patch.sourceMode === undefined) {
+      // Transfers are normally a symmetric pair; exhaust and boost are single.
+      const conventionalCount =
+        patch.kind === "primary-transfer" || patch.kind === "secondary-transfer"
+          ? "2"
+          : "1";
+      const current = project.ports.find((item) => item.id === id);
+      const previousConventional =
+        current &&
+        (current.kind === "primary-transfer" ||
+        current.kind === "secondary-transfer"
+          ? "2"
+          : "1");
+      if (current && current.count === previousConventional) {
+        resolvedPatch = { ...patch, count: conventionalCount };
+      }
+    }
     if (patch.sourceMode) {
       const currentAnalysis = analysis.cylinderLift.ports.find(
         (port) => port.id === id,
@@ -2384,7 +2429,7 @@ export function EngineWorkbench({
       sourceValue: "40",
       widthMm: "10",
       heightMm: "8",
-      count: "1",
+      count: "2",
       uncertaintyMm: "0.10",
     };
     setProject((current) => ({ ...current, ports: [...current.ports, port] }));
@@ -2645,6 +2690,75 @@ export function EngineWorkbench({
     project.presentation.showReferenceLabels,
     showCylinderLiftReferenceMarkers,
   ]);
+
+  const derivedDeckVolumeCc = useMemo(() => {
+    const boreMm = parseLocaleNumber(project.geometry.boreMm);
+    const deckMm = parseLocaleNumber(project.geometry.deckPositionMm);
+    if (boreMm === null || boreMm <= 0 || deckMm === null || deckMm <= 0) {
+      return null;
+    }
+    return {
+      value: cylindricalVolumeCc(boreMm, deckMm),
+      unit: "cc",
+      description: `From a ${formatNumber(boreMm, 2)} mm bore and a ${formatNumber(deckMm, 2)} mm crown position.`,
+    };
+  }, [project.geometry.boreMm, project.geometry.deckPositionMm]);
+
+  const derivedGasketVolumeCc = useMemo(() => {
+    const boreMm = parseLocaleNumber(project.geometry.boreMm);
+    const thicknessMm = parseLocaleNumber(
+      project.compression.headGasketThicknessMm,
+    );
+    if (
+      boreMm === null ||
+      boreMm <= 0 ||
+      thicknessMm === null ||
+      thicknessMm <= 0
+    ) {
+      return null;
+    }
+    return {
+      value: cylindricalVolumeCc(boreMm, thicknessMm),
+      unit: "cc",
+      description: `From a ${formatNumber(boreMm, 2)} mm bore and a ${formatNumber(thicknessMm, 2)} mm gasket, assuming the gasket matches the bore.`,
+    };
+  }, [project.geometry.boreMm, project.compression.headGasketThicknessMm]);
+
+  const derivedClearanceVolumeCc = useMemo(() => {
+    const target = analysis.compression.targetClearanceVolumeCc;
+    const ratio = analysis.compression.targetTrappedRatio;
+    if (target === null || target <= 0 || ratio === null) return null;
+    return {
+      value: target,
+      unit: "cc",
+      description: `Reaches the ${formatNumber(ratio, 2)}:1 trapped ratio at the current exhaust closure.`,
+    };
+  }, [
+    analysis.compression.targetClearanceVolumeCc,
+    analysis.compression.targetTrappedRatio,
+  ]);
+
+  const derivedInletAreaMm2 = useMemo(() => {
+    const geometry = analysis.induction.geometry;
+    const widthMm = parseLocaleNumber(
+      project.induction.commonAxialOverlapWidthMm,
+    );
+    if (geometry === null || widthMm === null || widthMm <= 0) return null;
+    const overlap = integrateRotaryOverlapArea({
+      windowWidthMm: widthMm,
+      crankCutawayArcMm: geometry.crankCutawayArcMm,
+      crankcaseWindowArcMm: geometry.crankcaseWindowArcMm,
+      circumferenceMm: geometry.circumferenceMm,
+    });
+    const mean = overlap.value?.meanOpenAreaMm2;
+    if (mean === undefined || !(mean > 0)) return null;
+    return {
+      value: mean,
+      unit: "mm²",
+      description:
+        "Mean open area of the arc overlap across the inlet duration.",
+    };
+  }, [analysis.induction.geometry, project.induction.commonAxialOverlapWidthMm]);
 
   const selectedTimingPhase = useMemo(
     () => timingPhases.find((phase) => phase.id === selectedArc) ?? null,
@@ -2967,6 +3081,22 @@ export function EngineWorkbench({
                         }
                       />
                     </span>
+                    {project.report.projectDate === "" ? (
+                      <span className="field-derived">
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() =>
+                            updateReport(
+                              "projectDate",
+                              new Date().toLocaleDateString("en-CA"),
+                            )
+                          }
+                        >
+                          Use today
+                        </button>
+                      </span>
+                    ) : null}
                   </label>
                 </div>
                 <label className="field report-details-field">
@@ -3601,6 +3731,7 @@ export function EngineWorkbench({
                             minimum={0}
                             exclusiveMinimum
                             help="Backward-compatible idealisation that applies one entered area across the full inlet duration."
+                            derived={derivedInletAreaMm2}
                             onChange={(value) =>
                               updateInduction("effectiveWindowAreaMm2", value)
                             }
@@ -3960,6 +4091,7 @@ export function EngineWorkbench({
                     unit="cc"
                     minimum={0}
                     exclusiveMinimum
+                    derived={derivedClearanceVolumeCc}
                     help="Assembled no-spacer baseline volume above the piston at TDC. When cylinder lift is active, its geometric volume is added separately."
                     onChange={(value) =>
                       updateCompression("clearanceVolumeCc", value)
@@ -3982,6 +4114,7 @@ export function EngineWorkbench({
                         label="Gasket or shim"
                         value={project.compression.gasketVolumeCc}
                         unit="cc"
+                        derived={derivedGasketVolumeCc}
                         onChange={(value) => updateCompression("gasketVolumeCc", value)}
                       />
                       <NumberField
@@ -3989,6 +4122,7 @@ export function EngineWorkbench({
                         label="Deck volume"
                         value={project.compression.deckVolumeCc}
                         unit="cc"
+                        derived={derivedDeckVolumeCc}
                         onChange={(value) => updateCompression("deckVolumeCc", value)}
                       />
                       <NumberField

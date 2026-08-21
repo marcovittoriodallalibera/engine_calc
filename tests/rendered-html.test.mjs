@@ -156,3 +156,15 @@ test("keeps character graph values visible in the print report", async () => {
   assert.match(printStyles, /\.gearing-chart-frame\s*\{[^}]*margin-top:/su);
   assert.match(printStyles, /\.gearing-chart\s*\{[^}]*min-width:\s*0;/su);
 });
+
+test("renames ambiguous labels and exposes the port type control", async () => {
+  const response = await render();
+  const html = await response.text();
+
+  assert.match(html, /Port type/);
+  assert.match(html, /Target clearance volume/);
+  // One quantity, one name.
+  assert.doesNotMatch(html, /Valve timing-track diameter/);
+  // Signed corrections are not tolerances.
+  assert.doesNotMatch(html, /± cc/);
+});
