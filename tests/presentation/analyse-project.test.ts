@@ -858,3 +858,59 @@ test("port width, height and count are validated in the live path", () => {
     result.diagnostics.some((message) => message.includes("whole number")),
   );
 });
+
+test("a reference speed outside the character sweep is reported", () => {
+  const project = cloneDemonstrationProject();
+  project.geometry.rpm = "12000";
+  project.transmission.maximumRpm = "13000";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("character sweep"),
+    ),
+  );
+});
+
+test("a reference speed above the gearing ceiling is reported", () => {
+  const project = cloneDemonstrationProject();
+  project.geometry.rpm = "10500";
+  project.character.rpmMaximum = "11000";
+  project.transmission.maximumRpm = "9000";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) => message.includes("not plotted")),
+  );
+});
+
+test("tooth counts outside the selected gear count are reported", () => {
+  const project = cloneDemonstrationProject();
+  project.transmission.gearCount = 4;
+  project.transmission.gears[4].clusterPinionTeeth = "26";
+  project.transmission.gears[4].drivenGearTeeth = "42";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("outside the 4-speed gearbox"),
+    ),
+  );
+});
+
+test("the demonstration project raises no speed or gearbox conflict", () => {
+  const result = analyseProject(cloneDemonstrationProject());
+
+  assert.equal(
+    result.diagnostics.some(
+      (message) =>
+        message.includes("character sweep") ||
+        message.includes("not plotted") ||
+        message.includes("gearbox"),
+    ),
+    false,
+  );
+});

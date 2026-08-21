@@ -1350,6 +1350,41 @@ function analyseProjectCore(
     };
   }
 
+  const characterSweepMinimum = parseLocaleNumber(project.character.rpmMinimum);
+  const characterSweepMaximum = parseLocaleNumber(project.character.rpmMaximum);
+  if (
+    rpm !== null &&
+    characterSweepMinimum !== null &&
+    characterSweepMaximum !== null &&
+    (rpm < characterSweepMinimum || rpm > characterSweepMaximum)
+  ) {
+    diagnostics.push(
+      `The reference speed of ${rpm.toFixed(0)} RPM sits outside the ${characterSweepMinimum.toFixed(0)} to ${characterSweepMaximum.toFixed(0)} RPM character sweep, so the sweep does not cover it.`,
+    );
+  }
+  if (project.transmission.enabled) {
+    const gearingMaximumRpm = parseLocaleNumber(project.transmission.maximumRpm);
+    if (rpm !== null && gearingMaximumRpm !== null && rpm > gearingMaximumRpm) {
+      diagnostics.push(
+        `The reference speed of ${rpm.toFixed(0)} RPM is above the ${gearingMaximumRpm.toFixed(0)} RPM ceiling used for road speed, so it is not plotted.`,
+      );
+    }
+    const staleGears = project.transmission.gears
+      .slice(project.transmission.gearCount)
+      .filter(
+        (gear) =>
+          gear.clusterPinionTeeth.trim() !== "" ||
+          gear.drivenGearTeeth.trim() !== "",
+      );
+    if (staleGears.length > 0) {
+      diagnostics.push(
+        `${staleGears
+          .map((gear) => gear.label)
+          .join(", ")} still holds tooth counts but sits outside the ${project.transmission.gearCount}-speed gearbox, so it is ignored and exported unused.`,
+      );
+    }
+  }
+
   const displacementResult = displacement({ boreMm, strokeMm });
   const displacementCc = displacementResult.value?.displacementPerCylinderCc ?? null;
   diagnostics.push(...diagnosticMessages(displacementResult));

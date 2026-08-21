@@ -265,9 +265,13 @@ function normaliseAngle(angle: number): number {
   return ((angle % 360) + 360) % 360;
 }
 
-function clockwiseDuration(start: number, end: number): number {
+function clockwiseDuration(
+  start: number,
+  end: number,
+  fullCircle = false,
+): number {
   const raw = end - start;
-  if (Math.abs(raw) >= 360) return 360;
+  if (fullCircle || Math.abs(raw) >= 360) return 360;
   return normaliseAngle(raw);
 }
 
@@ -2519,10 +2523,11 @@ export function EngineWorkbench({
   }
 
   const timingPhases = useMemo<TimingPhaseArc[]>(() => {
-    const portArcs = analysis.ports.map((port, index) => ({
+    const portArcs: TimingPhaseArc[] = analysis.ports.map((port, index) => ({
       id: port.id,
       start: port.openingAngleDeg,
       end: port.closingAngleDeg,
+      fullCircle: port.interval.fullCircle,
       colour: port.colour,
       label: port.label,
       category: port.kind === "exhaust" ? "Exhaust" : "Transfers",
@@ -2533,6 +2538,7 @@ export function EngineWorkbench({
         id: "rotary-inlet",
         start: analysis.rotary.interval.startDeg,
         end: analysis.rotary.interval.endDeg,
+        fullCircle: analysis.rotary.interval.fullCircle,
         colour: "#f0bd50",
         label: "Rotary inlet",
         category: "Induction",
@@ -3332,7 +3338,7 @@ export function EngineWorkbench({
                         </p>
                         <div className="field-grid field-grid-2">
                           <NumberField
-                            label="Valve timing-track diameter"
+                            label="Timing-track diameter"
                             value={project.induction.crankshaftDiameterMm}
                             unit="mm"
                             minimum={0}
@@ -3989,7 +3995,7 @@ export function EngineWorkbench({
                         compact
                         label="Piston crown"
                         value={project.compression.pistonCrownVolumeCc}
-                        unit="± cc"
+                        unit="cc"
                         help="Use a positive value when the crown adds clearance volume and a negative value for a dome that displaces volume."
                         onChange={(value) => updateCompression("pistonCrownVolumeCc", value)}
                       />
@@ -3997,7 +4003,8 @@ export function EngineWorkbench({
                     <NumberField
                       label="Custom correction"
                       value={project.compression.customCorrectionCc}
-                      unit="± cc"
+                      unit="cc"
+                      help="Signed. Use a positive value to add clearance volume and a negative value to remove it."
                       onChange={(value) => updateCompression("customCorrectionCc", value)}
                     />
                     <div className="inline-result">
@@ -4380,7 +4387,11 @@ export function EngineWorkbench({
                       </div>
                       <div>
                         <dt>Duration</dt>
-                        <dd>{formatNumber(clockwiseDuration(selectedTimingPhase.start, selectedTimingPhase.end), 1)}°</dd>
+                        <dd>{formatNumber(clockwiseDuration(
+                            selectedTimingPhase.start,
+                            selectedTimingPhase.end,
+                            selectedTimingPhase.fullCircle,
+                          ), 1)}°</dd>
                       </div>
                     </dl>
                     {selectedLiftComparison &&
@@ -5053,7 +5064,7 @@ export function EngineWorkbench({
                   unit="cc"
                 />
                 <Metric
-                  label="Target chamber volume"
+                  label="Target clearance volume"
                   value={formatNumber(analysis.compression.targetClearanceVolumeCc, 2)}
                   unit="cc"
                   detail={

@@ -60,7 +60,7 @@ test("server-renders the complete calculator shell", async () => {
   assert.match(html, /Rotary geometry solver/);
   assert.match(html, /Desired inlet opening/);
   assert.match(html, /Desired inlet closing/);
-  assert.match(html, /Valve timing-track diameter/);
+  assert.match(html, /Timing-track diameter/);
   assert.match(html, /Diameter uncertainty/);
   assert.match(html, /aria-label="Manual arc measurement"/);
   assert.match(html, /Measured crank cut-away arc/);
