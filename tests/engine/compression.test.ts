@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  boreAreaMm2,
+  cylinderAreaMm2,
+  cylindricalVolumeCc,
   displacement,
   evaluateCompressionScenario,
   geometricCompressionRatio,
@@ -133,4 +136,12 @@ test("squish gap statistics expose minimum, mean and asymmetry", () => {
   assert.equal(result.value!.meanMm, 1);
   closeTo(result.value!.rangeMm, 0.4);
   closeTo(result.value!.standardDeviationMm, Math.sqrt(0.02));
+});
+
+test("bore area and cylindrical volume share one definition", () => {
+  assert.ok(Math.abs(boreAreaMm2(60) - 2827.433388) < 1e-5);
+  assert.ok(Math.abs(cylindricalVolumeCc(60, 1) - 2.827433) < 1e-5);
+  assert.equal(cylindricalVolumeCc(60, 0), 0);
+  assert.equal(cylinderAreaMm2(60).value, boreAreaMm2(60));
+  assert.equal(cylinderAreaMm2(0).value, null);
 });

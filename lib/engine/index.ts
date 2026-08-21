@@ -4,7 +4,6 @@ export * from "./timing.ts";
 export * from "./compression.ts";
 export * from "./squish.ts";
 export * from "./time-area.ts";
-export * from "./project.ts";
 export * from "./rotary-area.ts";
 export * from "./character.ts";
 export * from "./transmission.ts";

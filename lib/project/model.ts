@@ -405,11 +405,6 @@ export function changeCompressionVolumeMode(
   };
 }
 
-/** Cylindrical volume in cubic centimetres for a bore and an axial height. */
-export function cylindricalVolumeCc(boreMm: number, heightMm: number): number {
-  return ((Math.PI * boreMm ** 2) / 4) * heightMm / 1000;
-}
-
 export function parseLocaleNumber(value: string): number | null {
   const token = value.trim().replace(",", ".");
   if (!token || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(token)) {

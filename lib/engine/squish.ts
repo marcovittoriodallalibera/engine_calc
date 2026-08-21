@@ -1,3 +1,4 @@
+import { boreAreaMm2 } from "./compression.ts";
 import {
   calculationResult,
   collectDiagnostics,
@@ -49,18 +50,18 @@ function centralGeometry(
   if (diagnostics.some((item) => item.severity === "error")) {
     return calculationResult(null, diagnostics);
   }
-  const boreAreaMm2 = (Math.PI * boreMm ** 2) / 4;
-  const bowlAreaMm2 = (Math.PI * bowlDiameterMm ** 2) / 4;
-  const squishBandAreaMm2 = boreAreaMm2 - bowlAreaMm2;
-  const squishAreaRatio = squishBandAreaMm2 / boreAreaMm2;
+  const boreArea = boreAreaMm2(boreMm);
+  const bowlArea = boreAreaMm2(bowlDiameterMm);
+  const squishBandAreaMm2 = boreArea - bowlArea;
+  const squishAreaRatio = squishBandAreaMm2 / boreArea;
   return calculationResult({
     boreMm,
     bowlDiameterMm,
     bandWidthMm: (boreMm - bowlDiameterMm) / 2,
     squishAreaRatio,
     squishAreaPercent: squishAreaRatio * 100,
-    boreAreaMm2,
-    bowlAreaMm2,
+    boreAreaMm2: boreArea,
+    bowlAreaMm2: bowlArea,
     squishBandAreaMm2,
   });
 }

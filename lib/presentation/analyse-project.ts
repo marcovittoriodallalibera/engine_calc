@@ -1,7 +1,10 @@
 import {
+  blowdownFromOpeningAngles,
+  cylindricalVolumeCc,
   circularIntervalOverlap,
   calculateTransmission,
   crankAnglesFromTdcTravel,
+  portRoofTravelFromMeasurement,
   degreesToArcLength,
   degreesAtRpmToMilliseconds,
   displacement,
@@ -963,7 +966,14 @@ function timingFromPort(
         ],
       };
     }
-    travelFromTdcMm = sourceValue - crownBelowDeckAtTdcMm;
+    const roofTravel = portRoofTravelFromMeasurement({
+      roofDepthFromDeckMm: sourceValue,
+      crownBelowDeckAtTdcMm,
+      strokeMm,
+    });
+    diagnostics.push(...diagnosticMessages(roofTravel));
+    if (!roofTravel.value) return { value: null, diagnostics };
+    travelFromTdcMm = roofTravel.value.travelFromTdcMm;
   } else if (port.sourceMode === "opening-angle") {
     const result = symmetricPortTimingFromOpening(sourceValue);
     diagnostics.push(...diagnosticMessages(result));
@@ -1052,6 +1062,18 @@ function analysePort(
     diagnostics.push(...diagnosticMessages(shiftedTiming));
     if (!shiftedTiming.value) return { value: null, diagnostics };
     effectiveTiming = shiftedTiming.value;
+  }
+
+  if (widthMm !== null && widthMm <= 0) {
+    diagnostics.push(`${port.label} width must be greater than zero.`);
+  }
+  if (heightMm !== null && heightMm <= 0) {
+    diagnostics.push(`${port.label} height must be greater than zero.`);
+  }
+  if (count !== null && (!Number.isInteger(count) || count <= 0)) {
+    diagnostics.push(
+      `${port.label} count must be a whole number of one or more.`,
+    );
   }
 
   let maximumAreaMm2: number | null = null;
@@ -1377,9 +1399,18 @@ function analyseProjectCore(
   const rotaryTiming = rotaryInduction.timing;
 
   const transfers: TransferAnalysis[] = transferPorts.map((port) => {
-    const blowdownDeg = exhaust
-      ? port.openingAngleDeg - exhaust.openingAngleDeg
+    const blowdown = exhaust
+      ? blowdownFromOpeningAngles(
+          exhaust.openingAngleDeg,
+          port.openingAngleDeg,
+        )
       : null;
+    if (blowdown) {
+      for (const message of diagnosticMessages(blowdown)) {
+        diagnostics.push(`${port.label}: ${message}`);
+      }
+    }
+    const blowdownDeg = blowdown?.value?.blowdownDeg ?? null;
     const exhaustOverlapDeg = exhaust
       ? circularIntervalOverlap(exhaust.interval, port.interval).value?.degrees ?? null
       : null;
@@ -1763,7 +1794,7 @@ function analyseProjectCore(
     );
   }
   const cylinderLiftVolumeDeltaCc =
-    ((Math.PI * boreMm ** 2) / 4) * cylinderLiftMm / 1000;
+    cylindricalVolumeCc(boreMm, cylinderLiftMm);
   const clearanceVolume =
     baselineClearanceVolume === null
       ? null
@@ -2440,7 +2471,7 @@ export function analyseProject(project: EngineProjectDraft): EngineProjectAnalys
   const boreMm = parseLocaleNumber(project.geometry.boreMm);
   const clearanceVolumeDeltaCc =
     boreMm !== null && boreMm > 0
-      ? ((Math.PI * boreMm ** 2) / 4) * appliedThicknessMm / 1000
+      ? cylindricalVolumeCc(boreMm, appliedThicknessMm)
       : null;
   const ports = current.ports.flatMap((port) => {
     const baselinePort = baseline.ports.find((item) => item.id === port.id);

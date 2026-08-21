@@ -790,3 +790,71 @@ test("a constant inlet area does not demand arc geometry", () => {
     false,
   );
 });
+
+test("a transfer opening before the exhaust is warned about", () => {
+  const project = cloneDemonstrationProject();
+  const exhaust = project.ports.find((port) => port.kind === "exhaust");
+  const primary = project.ports.find(
+    (port) => port.kind === "primary-transfer",
+  );
+  assert.ok(exhaust && primary);
+  exhaust.sourceValue = "42";
+  primary.sourceValue = "30";
+
+  const result = analyseProject(project);
+
+  assert.ok((result.transfers[0]?.blowdownDeg ?? 0) < 0);
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("opens before the exhaust"),
+    ),
+    "the kernel blowdown warning must reach the user",
+  );
+});
+
+test("a roof depth above the crown at TDC is rejected", () => {
+  const project = cloneDemonstrationProject();
+  project.geometry.deckPositionMm = "2";
+  project.ports[0].sourceMode = "depth-from-deck";
+  project.ports[0].sourceValue = "1";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("above the piston crown"),
+    ),
+  );
+});
+
+test("a roof depth beyond the stroke is rejected", () => {
+  const project = cloneDemonstrationProject();
+  project.geometry.deckPositionMm = "0";
+  project.ports[0].sourceMode = "depth-from-deck";
+  project.ports[0].sourceValue = "400";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) => message.includes("exceeds the stroke")),
+  );
+});
+
+test("port width, height and count are validated in the live path", () => {
+  const project = cloneDemonstrationProject();
+  project.ports[0].widthMm = "0";
+  project.ports[1].heightMm = "-3";
+  project.ports[2].count = "2.5";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) => message.includes("width must be")),
+  );
+  assert.ok(
+    result.diagnostics.some((message) => message.includes("height must be")),
+  );
+  assert.ok(
+    result.diagnostics.some((message) => message.includes("whole number")),
+  );
+});

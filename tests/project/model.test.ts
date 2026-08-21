@@ -9,7 +9,6 @@ import {
   changeRotaryMeasuredArc,
   changeSquishGeometryMode,
   cloneDemonstrationProject,
-  cylindricalVolumeCc,
   decodeProjectFragment,
   encodeProjectFragment,
   parseProjectJson,
@@ -453,9 +452,4 @@ test("a promoted compression mode round trips to the same total", () => {
   );
   const backToTotal = changeCompressionVolumeMode(toBreakdown, "measured-total");
   assert.equal(backToTotal.clearanceVolumeCc, "13.75");
-});
-
-test("cylindrical volume converts millimetres to cubic centimetres", () => {
-  assert.ok(Math.abs(cylindricalVolumeCc(60, 1) - 2.827433) < 1e-5);
-  assert.equal(cylindricalVolumeCc(60, 0), 0);
 });

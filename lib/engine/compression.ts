@@ -95,11 +95,21 @@ export interface CompressionScenarioResult {
   after: CompressionScenarioState;
 }
 
+/** Bore cross-sectional area in square millimetres. */
+export function boreAreaMm2(boreMm: number): number {
+  return (Math.PI * boreMm ** 2) / 4;
+}
+
+/** Swept volume in cubic centimetres for a bore and an axial height. */
+export function cylindricalVolumeCc(boreMm: number, heightMm: number): number {
+  return (boreAreaMm2(boreMm) * heightMm) / 1000;
+}
+
 export function cylinderAreaMm2(boreMm: number): CalculationResult<number> {
   const diagnostics = collectDiagnostics(positiveNumberDiagnostic(boreMm, "boreMm"));
   return diagnostics.length > 0
     ? calculationResult(null, diagnostics)
-    : calculationResult((Math.PI * boreMm ** 2) / 4);
+    : calculationResult(boreAreaMm2(boreMm));
 }
 
 export function displacement(input: CylinderGeometry): CalculationResult<DisplacementResult> {
@@ -117,7 +127,7 @@ export function displacement(input: CylinderGeometry): CalculationResult<Displac
   if (diagnostics.some((item) => item.severity === "error")) {
     return calculationResult(null, diagnostics);
   }
-  const area = (Math.PI * input.boreMm ** 2) / 4;
+  const area = boreAreaMm2(input.boreMm);
   const displacementPerCylinderCc = (area * input.strokeMm) / 1000;
   return calculationResult({
     cylinderAreaMm2: area,
@@ -176,7 +186,7 @@ export function trappedCompressionRatio(
     return calculationResult(null, diagnostics);
   }
   const trappedSweptVolumeCc =
-    ((Math.PI * input.boreMm ** 2) / 4) * input.exhaustClosureTravelFromTdcMm / 1000;
+    cylindricalVolumeCc(input.boreMm, input.exhaustClosureTravelFromTdcMm);
   return calculationResult({
     trappedSweptVolumeCc,
     clearanceVolumeCc: input.clearanceVolumeCc,
@@ -251,7 +261,7 @@ export function targetClearanceVolumeForTrappedRatio(
     return calculationResult(null, diagnostics);
   }
   const trappedSweptVolumeCc =
-    ((Math.PI * input.boreMm ** 2) / 4) * input.exhaustClosureTravelFromTdcMm / 1000;
+    cylindricalVolumeCc(input.boreMm, input.exhaustClosureTravelFromTdcMm);
   return calculationResult({
     targetClearanceVolumeCc: trappedSweptVolumeCc / (input.targetTrappedRatio - 1),
     trappedSweptVolumeCc,
@@ -355,7 +365,7 @@ export function evaluateCompressionScenario(
 
   const before = buildScenarioState(input);
   diagnostics.push(...before.diagnostics);
-  const area = (Math.PI * input.boreMm ** 2) / 4;
+  const area = boreAreaMm2(input.boreMm);
   const clearanceVolumeDeltaCc =
     change.kind === "head-gasket" || change.kind === "base-spacer"
       ? area * change.thicknessMm / 1000
