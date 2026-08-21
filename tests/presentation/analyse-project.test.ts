@@ -761,3 +761,32 @@ test("a second exhaust port is reported as area-only", () => {
     ),
   );
 });
+
+test("arc geometry is validated when direct angles drive an overlap area", () => {
+  const project = cloneDemonstrationProject();
+  project.induction.timingSource = "direct-angles";
+  project.induction.areaSource = "cylindrical-overlap";
+  project.induction.measuredArcMm = "999";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.length > 0,
+    "an unusable arc must be reported even in direct-angle mode",
+  );
+});
+
+test("a constant inlet area does not demand arc geometry", () => {
+  const project = cloneDemonstrationProject();
+  project.induction.timingSource = "direct-angles";
+  project.induction.areaSource = "constant-area";
+  project.induction.effectiveWindowAreaMm2 = "450";
+  project.induction.measuredArcMm = "";
+
+  const result = analyseProject(project);
+
+  assert.equal(
+    result.diagnostics.some((message) => message.includes("Arc overlap")),
+    false,
+  );
+});

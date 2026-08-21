@@ -28,7 +28,9 @@ import {
   MAX_PROJECT_BYTES,
   MAX_SHARE_FRAGMENT_LENGTH,
   PROJECT_STORAGE_KEY,
+  changeCompressionVolumeMode,
   changeRotaryMeasuredArc,
+  changeSquishGeometryMode,
   cloneDemonstrationProject,
   decodeProjectFragment,
   encodeProjectFragment,
@@ -2216,10 +2218,21 @@ export function EngineWorkbench({
     value: EngineProjectDraft["compression"][K],
   ) {
     noteEdit();
-    setProject((current) => ({
-      ...current,
-      compression: { ...current.compression, [key]: value },
-    }));
+    setProject((current) => {
+      if (key === "volumeMode") {
+        return {
+          ...current,
+          compression: changeCompressionVolumeMode(
+            current.compression,
+            value as EngineProjectDraft["compression"]["volumeMode"],
+          ),
+        };
+      }
+      return {
+        ...current,
+        compression: { ...current.compression, [key]: value },
+      };
+    });
   }
 
   function nudgeCylinderLift(deltaMm: number) {
@@ -2237,10 +2250,22 @@ export function EngineWorkbench({
     value: EngineProjectDraft["squish"][K],
   ) {
     noteEdit();
-    setProject((current) => ({
-      ...current,
-      squish: { ...current.squish, [key]: value },
-    }));
+    setProject((current) => {
+      if (key === "geometryMode") {
+        return {
+          ...current,
+          squish: changeSquishGeometryMode(
+            current.squish,
+            value as EngineProjectDraft["squish"]["geometryMode"],
+            parseLocaleNumber(current.geometry.boreMm),
+          ),
+        };
+      }
+      return {
+        ...current,
+        squish: { ...current.squish, [key]: value },
+      };
+    });
   }
 
   function updateInduction<K extends keyof EngineProjectDraft["induction"]>(

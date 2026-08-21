@@ -320,6 +320,96 @@ export function changeRotaryMeasuredArc(
   };
 }
 
+function formatDerived(value: number): string {
+  return String(Number(value.toFixed(4)));
+}
+
+/**
+ * Promote the squish geometry to the incoming mode, so the value the user sees
+ * describes the same chamber they measured instead of a stale counterpart.
+ */
+export function changeSquishGeometryMode(
+  squish: EngineProjectDraft["squish"],
+  geometryMode: EngineProjectDraft["squish"]["geometryMode"],
+  boreMm: number | null,
+): EngineProjectDraft["squish"] {
+  if (geometryMode === squish.geometryMode) return squish;
+  if (boreMm === null || boreMm <= 0) return { ...squish, geometryMode };
+
+  if (geometryMode === "band-width") {
+    const bowl = parseLocaleNumber(squish.bowlDiameterMm);
+    if (bowl === null || bowl < 0 || bowl > boreMm) {
+      return { ...squish, geometryMode };
+    }
+    return {
+      ...squish,
+      geometryMode,
+      bandWidthMm: formatDerived((boreMm - bowl) / 2),
+    };
+  }
+
+  const band = parseLocaleNumber(squish.bandWidthMm);
+  if (band === null || band < 0 || band * 2 > boreMm) {
+    return { ...squish, geometryMode };
+  }
+  return {
+    ...squish,
+    geometryMode,
+    bowlDiameterMm: formatDerived(boreMm - 2 * band),
+  };
+}
+
+/**
+ * Promote the compression volumes to the incoming mode. Switching to a measured
+ * total carries the component sum across; switching to a breakdown seeds the
+ * head chamber with the measured total so the two modes agree on first sight.
+ */
+export function changeCompressionVolumeMode(
+  compression: EngineProjectDraft["compression"],
+  volumeMode: EngineProjectDraft["compression"]["volumeMode"],
+): EngineProjectDraft["compression"] {
+  if (volumeMode === compression.volumeMode) return compression;
+
+  if (volumeMode === "measured-total") {
+    const components = [
+      compression.headChamberVolumeCc,
+      compression.gasketVolumeCc,
+      compression.deckVolumeCc,
+      compression.pistonCrownVolumeCc,
+      compression.customCorrectionCc,
+    ].map(parseLocaleNumber);
+    if (components.some((value) => value === null)) {
+      return { ...compression, volumeMode };
+    }
+    const total = (components as number[]).reduce(
+      (sum, value) => sum + value,
+      0,
+    );
+    return {
+      ...compression,
+      volumeMode,
+      clearanceVolumeCc: formatDerived(total),
+    };
+  }
+
+  const measured = parseLocaleNumber(compression.clearanceVolumeCc);
+  if (measured === null) return { ...compression, volumeMode };
+  return {
+    ...compression,
+    volumeMode,
+    headChamberVolumeCc: formatDerived(measured),
+    gasketVolumeCc: "0",
+    deckVolumeCc: "0",
+    pistonCrownVolumeCc: "0",
+    customCorrectionCc: "0",
+  };
+}
+
+/** Cylindrical volume in cubic centimetres for a bore and an axial height. */
+export function cylindricalVolumeCc(boreMm: number, heightMm: number): number {
+  return ((Math.PI * boreMm ** 2) / 4) * heightMm / 1000;
+}
+
 export function parseLocaleNumber(value: string): number | null {
   const token = value.trim().replace(",", ".");
   if (!token || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(token)) {

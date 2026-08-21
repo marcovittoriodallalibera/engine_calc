@@ -902,6 +902,15 @@ function analyseRotaryInduction(
           "Enter the timing-track diameter and one positive measured arc shorter than the total required by the desired timing.",
         );
       }
+    } else if (project.induction.areaSource === "cylindrical-overlap") {
+      // Direct-angle timing still consumes the arc geometry for the overlap
+      // area model, so the same measurements have to be validated here.
+      if (geometryResult) diagnostics.push(...diagnosticMessages(geometryResult));
+      if (!geometryResult?.value) {
+        diagnostics.push(
+          "Arc overlap inlet area needs a timing-track diameter and one positive measured arc shorter than the total required by the desired timing.",
+        );
+      }
     }
     if (geometryUncertainty.diagnostic) {
       diagnostics.push(geometryUncertainty.diagnostic);

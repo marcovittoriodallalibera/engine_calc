@@ -5,8 +5,11 @@ import {
   MAX_PROJECT_BYTES,
   MAX_SHARE_FRAGMENT_LENGTH,
   PROJECT_SCHEMA_VERSION,
+  changeCompressionVolumeMode,
   changeRotaryMeasuredArc,
+  changeSquishGeometryMode,
   cloneDemonstrationProject,
+  cylindricalVolumeCc,
   decodeProjectFragment,
   encodeProjectFragment,
   parseProjectJson,
@@ -385,4 +388,74 @@ test("creates stable ASCII-safe project filename stems", () => {
   assert.equal(safeProjectFilename("  Màrcó / Vespa: Ø60?  "), "marco-vespa-60");
   assert.equal(safeProjectFilename("../../"), "phase-360-project");
   assert.equal(safeProjectFilename("x".repeat(100)).length, 64);
+});
+
+test("switching squish geometry mode promotes the measured value", () => {
+  const project = cloneDemonstrationProject();
+  project.squish.geometryMode = "bowl-diameter";
+  project.squish.bowlDiameterMm = "42";
+  project.squish.bandWidthMm = "999";
+
+  const toBand = changeSquishGeometryMode(project.squish, "band-width", 60);
+  assert.equal(toBand.geometryMode, "band-width");
+  assert.equal(toBand.bandWidthMm, "9");
+
+  const backToBowl = changeSquishGeometryMode(toBand, "bowl-diameter", 60);
+  assert.equal(backToBowl.bowlDiameterMm, "42");
+});
+
+test("squish mode switch leaves the value alone when it cannot be derived", () => {
+  const squish = cloneDemonstrationProject().squish;
+  squish.geometryMode = "bowl-diameter";
+  squish.bowlDiameterMm = "";
+
+  const result = changeSquishGeometryMode(squish, "band-width", 60);
+  assert.equal(result.geometryMode, "band-width");
+  assert.equal(result.bandWidthMm, squish.bandWidthMm);
+
+  const noBore = changeSquishGeometryMode(squish, "band-width", null);
+  assert.equal(noBore.geometryMode, "band-width");
+});
+
+test("switching to a measured total carries the component sum across", () => {
+  const compression = cloneDemonstrationProject().compression;
+  compression.volumeMode = "component-breakdown";
+  compression.headChamberVolumeCc = "10.8";
+  compression.gasketVolumeCc = "0.6";
+  compression.deckVolumeCc = "1";
+  compression.pistonCrownVolumeCc = "0";
+  compression.customCorrectionCc = "0";
+
+  const result = changeCompressionVolumeMode(compression, "measured-total");
+  assert.equal(result.volumeMode, "measured-total");
+  assert.equal(result.clearanceVolumeCc, "12.4");
+});
+
+test("switching to a component breakdown seeds the head chamber", () => {
+  const compression = cloneDemonstrationProject().compression;
+  compression.volumeMode = "measured-total";
+  compression.clearanceVolumeCc = "12.4";
+
+  const result = changeCompressionVolumeMode(compression, "component-breakdown");
+  assert.equal(result.headChamberVolumeCc, "12.4");
+  assert.equal(result.gasketVolumeCc, "0");
+  assert.equal(result.deckVolumeCc, "0");
+});
+
+test("a promoted compression mode round trips to the same total", () => {
+  const compression = cloneDemonstrationProject().compression;
+  compression.volumeMode = "measured-total";
+  compression.clearanceVolumeCc = "13.75";
+
+  const toBreakdown = changeCompressionVolumeMode(
+    compression,
+    "component-breakdown",
+  );
+  const backToTotal = changeCompressionVolumeMode(toBreakdown, "measured-total");
+  assert.equal(backToTotal.clearanceVolumeCc, "13.75");
+});
+
+test("cylindrical volume converts millimetres to cubic centimetres", () => {
+  assert.ok(Math.abs(cylindricalVolumeCc(60, 1) - 2.827433) < 1e-5);
+  assert.equal(cylindricalVolumeCc(60, 0), 0);
 });
