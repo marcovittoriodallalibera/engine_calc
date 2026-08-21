@@ -816,14 +816,23 @@ function PortEditor({
               integer
               onChange={(count) => onUpdate({ count })}
             />
-            <NumberField
-              compact
-              label="Measurement uncertainty"
-              value={port.uncertaintyMm}
-              unit="± mm"
-              minimum={0}
-              onChange={(uncertaintyMm) => onUpdate({ uncertaintyMm })}
-            />
+            {port.sourceMode === "opening-angle" ||
+            port.sourceMode === "duration" ? (
+              <p className="fine-print">
+                A millimetre uncertainty cannot be propagated from an
+                angle-based timing input. Use a travel or height input to carry
+                measurement bounds through the results.
+              </p>
+            ) : (
+              <NumberField
+                compact
+                label="Measurement uncertainty"
+                value={port.uncertaintyMm}
+                unit="± mm"
+                minimum={0}
+                onChange={(uncertaintyMm) => onUpdate({ uncertaintyMm })}
+              />
+            )}
           </div>
           <p className="fine-print">
             Time-area uses an idealised rectangular projected window. Radius,

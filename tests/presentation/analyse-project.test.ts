@@ -1011,3 +1011,30 @@ test("a chamber too small for its own squish band is reported", () => {
     ),
   );
 });
+
+test("uncertainty that cannot apply to an angle input is reported, not ignored", () => {
+  const project = cloneDemonstrationProject();
+  project.ports[0].sourceMode = "opening-angle";
+  project.ports[0].sourceValue = "90";
+  project.ports[0].uncertaintyMm = "0.10";
+
+  const result = analyseProject(project);
+
+  const port = result.ports.find((item) => item.id === project.ports[0].id);
+  assert.ok(port);
+  assert.equal(port.uncertainty, null);
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("does not apply to an angle-based timing input"),
+    ),
+  );
+});
+
+test("uncertainty still propagates from a travel input", () => {
+  const project = cloneDemonstrationProject();
+  const result = analyseProject(project);
+
+  const port = result.ports.find((item) => item.kind === "exhaust");
+  assert.ok(port?.uncertainty);
+  assert.ok(port.uncertainty.openingMaxDeg > port.uncertainty.openingMinDeg);
+});

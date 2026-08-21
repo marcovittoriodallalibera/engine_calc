@@ -1145,13 +1145,20 @@ function analysePort(
   }
 
   let uncertainty: PortAnalysis["uncertainty"] = null;
+  const uncertaintyAppliesToMode =
+    port.sourceMode === "travel-from-tdc" ||
+    port.sourceMode === "height-above-bdc" ||
+    port.sourceMode === "depth-from-deck";
   if (
     uncertaintyMm !== null &&
     uncertaintyMm > 0 &&
-    (port.sourceMode === "travel-from-tdc" ||
-      port.sourceMode === "height-above-bdc" ||
-      port.sourceMode === "depth-from-deck")
+    !uncertaintyAppliesToMode
   ) {
+    diagnostics.push(
+      `${port.label} measurement uncertainty is in millimetres and does not apply to an angle-based timing input, so it is ignored. Switch to a travel or height input to propagate it.`,
+    );
+  }
+  if (uncertaintyMm !== null && uncertaintyMm > 0 && uncertaintyAppliesToMode) {
     const lowerTravel = effectiveTravelFromTdcMm - uncertaintyMm;
     const upperTravel = effectiveTravelFromTdcMm + uncertaintyMm;
     if (lowerTravel < 0 || upperTravel > strokeMm) {

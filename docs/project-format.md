@@ -2,7 +2,7 @@
 
 ## Schema version
 
-Current portable projects are JSON objects with `schemaVersion: 6`. A document stores authoritative editable inputs, report identity and presentation preferences. It does not store derived timing, overlap, diagnostics, graph series, compression, time-area or transmission results.
+Current portable projects are JSON objects with `schemaVersion: 7`. A document stores authoritative editable inputs, report identity and presentation preferences. It does not store derived timing, overlap, diagnostics, graph series, compression, time-area or transmission results.
 
 The principal sections are:
 
@@ -15,6 +15,8 @@ ports[]
 induction
 character
 transmission
+crankcase
+exhaust
 compression
 squish
 presentation
@@ -23,6 +25,12 @@ presentation
 The `report` section stores an optional project code, an optional ISO project date and up to three bounded lines describing components, engine characteristics or test notes. These fields identify the project but never alter a calculation. The report generation date is created at print time and is not persisted.
 
 Each port has a stable identifier, label, category, enabled state, authoritative source mode and source value. Idealised window width, height, count and measurement uncertainty are also retained.
+
+Each port also records whether its entered width is a `chord` measured straight across the window or a width already `developed` along the liner. Documents at schema 6 and earlier migrate to `developed`, which is how their width was already integrated, so migration does not change any existing result.
+
+The `crankcase` section stores the optional measured case volume at BDC and its optional non-negative uncertainty. It is the datum for primary compression and is never derived from other inputs.
+
+The `exhaust` section stores the assumed exhaust gas wave speed used for the resonant-length estimate. Migration seeds it at 500 m/s. It is an entered assumption, not a calculated value, and it affects only that estimate.
 
 Compression records whether the authoritative clearance volume is a measured assembled total or a signed component sum. Squish geometry records whether bowl diameter or radial band width is authoritative.
 
@@ -93,7 +101,7 @@ At startup, a valid project encoded in the URL fragment takes precedence over a 
 
 Share links use URL-safe base64 encoded JSON after `#p=`. Browser URL fragments are not included in normal HTTP requests, so opening or copying such a link does not create a server-side project record.
 
-The desktop application uses the configured canonical HTTPS application origin for copied links. It never exposes the private `phase360` scheme. Web and desktop clients share schema version 6 and the same migration rules; the desktop profile directory itself is neither a portable project format nor a data-encryption guarantee.
+The desktop application uses the configured canonical HTTPS application origin for copied links. It never exposes the private `phase360` scheme. Web and desktop clients share schema version 7 and the same migration rules; the desktop profile directory itself is neither a portable project format nor a data-encryption guarantee.
 
 An encoded-length cap avoids creating unreliable URLs. JSON export is the fallback for larger projects.
 

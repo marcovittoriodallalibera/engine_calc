@@ -15,8 +15,12 @@ The current release is an MVP. Calculation, local persistence, portable projects
 - Degrees converted to elapsed milliseconds at the selected engine speed
 - Displacement and mean piston speed
 - Geometric and trapped compression ratios, trapped swept volume and target clearance volume
+- Crankcase primary compression ratio from a measured case volume at BDC
 - Four-point squish statistics, central bowl band width and squish area ratio
+- Maximum squish velocity and the crank angle it peaks at
+- Port width developed along the liner when a chord is entered
 - Idealised rectangular port angle-area, specific time-area and downstroke blowdown time-area
+- First-order resonant exhaust length from exhaust duration, engine speed and an assumed gas wave speed
 - Configurable Vespa primary and four- or five-speed gearbox reductions from editable tooth counts
 - Theoretical road speed, speed per 1,000 RPM, post-shift RPM and RPM drop for every enabled gear
 - A real-time and printable road-speed graph with speed on the horizontal axis and engine RPM on the vertical axis
@@ -28,6 +32,8 @@ All results update as soon as a valid input changes. Comma and point decimal sep
 ## Interpretation boundary
 
 The application calculates geometry. It does not predict gas flow, pressure waves, power, torque, combustion temperature, detonation margin or machining safety.
+
+Primary compression is a geometric volume ratio, not a measure of pumping efficiency or delivery ratio. Squish velocity is a one-dimensional geometric rate, not a combustion or detonation prediction. Resonant exhaust length is a first-order wave-return length that excludes pipe diameters, cone angles and superposition, and its gas wave speed is an entered assumption rather than a derived value.
 
 Positive overlap means that events are geometrically open at the same crank angle. It does not establish flow direction or performance. Trapped compression is a geometric volume ratio beginning at exhaust closure, not a dynamic pressure estimate. Time-area uses idealised projected windows and excludes duct angle, edge radius, chamfer, discharge coefficient and gas dynamics.
 
