@@ -914,3 +914,100 @@ test("the demonstration project raises no speed or gearbox conflict", () => {
     false,
   );
 });
+
+test("a chord width is developed along the liner before integration", () => {
+  const project = cloneDemonstrationProject();
+  const exhaust = project.ports.find((port) => port.kind === "exhaust");
+  assert.ok(exhaust);
+
+  exhaust.widthMeasurement = "chord";
+  const chord = analyseProject(project);
+  exhaust.widthMeasurement = "developed";
+  const developed = analyseProject(project);
+
+  const chordPort = chord.ports.find((port) => port.kind === "exhaust");
+  const developedPort = developed.ports.find((port) => port.kind === "exhaust");
+  assert.ok(chordPort && developedPort);
+
+  assert.ok(Math.abs((chordPort.developedWidthMm ?? 0) - 42.455066) < 1e-5);
+  assert.equal(developedPort.developedWidthMm, 39);
+  assert.ok(
+    (chordPort.angleAreaMm2Deg ?? 0) > (developedPort.angleAreaMm2Deg ?? 0),
+    "developing the chord increases the port area",
+  );
+});
+
+test("a chord wider than the bore excludes the port with a reason", () => {
+  const project = cloneDemonstrationProject();
+  project.ports[0].widthMeasurement = "chord";
+  project.ports[0].widthMm = "70";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("cannot exceed the bore"),
+    ),
+  );
+});
+
+test("primary compression appears once a crankcase volume is entered", () => {
+  const project = cloneDemonstrationProject();
+  assert.equal(analyseProject(project).crankcase.primaryCompressionRatio, null);
+
+  project.crankcase.volumeAtBdcCc = "700";
+  const result = analyseProject(project);
+
+  assert.ok(
+    Math.abs((result.crankcase.primaryCompressionRatio ?? 0) - 1.20599872) <
+      1e-6,
+  );
+});
+
+test("a crankcase smaller than the swept volume is reported", () => {
+  const project = cloneDemonstrationProject();
+  project.crankcase.volumeAtBdcCc = "80";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("not larger than the swept volume"),
+    ),
+  );
+});
+
+test("tuned exhaust length follows the exhaust duration and engine speed", () => {
+  const project = cloneDemonstrationProject();
+  const result = analyseProject(project);
+
+  const duration = result.exhaust?.durationDeg;
+  assert.ok(duration);
+  const expected = (1000 * 500 * duration) / (12 * 8000);
+  assert.ok(
+    Math.abs((result.exhaustResonance.tunedLengthMm ?? 0) - expected) < 1e-6,
+  );
+  assert.equal(result.exhaustResonance.gasVelocityMps, 500);
+});
+
+test("squish velocity is reported for the demonstration chamber", () => {
+  const result = analyseProject(cloneDemonstrationProject());
+
+  const velocity = result.squish.maximumVelocityMps;
+  assert.ok(velocity !== null && velocity > 1 && velocity < 60);
+  const peak = result.squish.velocityPeakAngleDeg;
+  assert.ok(peak !== null && peak > 0 && peak < 45);
+});
+
+test("a chamber too small for its own squish band is reported", () => {
+  const project = cloneDemonstrationProject();
+  project.compression.clearanceVolumeCc = "0.5";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("chamber measurements disagree"),
+    ),
+  );
+});

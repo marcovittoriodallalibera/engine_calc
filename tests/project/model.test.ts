@@ -453,3 +453,72 @@ test("a promoted compression mode round trips to the same total", () => {
   const backToTotal = changeCompressionVolumeMode(toBreakdown, "measured-total");
   assert.equal(backToTotal.clearanceVolumeCc, "13.75");
 });
+
+test("schema 6 projects migrate without changing their port area", () => {
+  const legacy = cloneDemonstrationProject() as unknown as Record<
+    string,
+    unknown
+  >;
+  legacy.schemaVersion = 6;
+  delete legacy.crankcase;
+  delete legacy.exhaust;
+  for (const port of legacy.ports as Array<Record<string, unknown>>) {
+    delete port.widthMeasurement;
+  }
+
+  const parsed = validateProjectDocument(legacy);
+
+  assert.equal(parsed.ok, true);
+  if (parsed.ok) {
+    assert.equal(parsed.project.schemaVersion, PROJECT_SCHEMA_VERSION);
+    // The entered width was already integrated as the flow-facing width, so a
+    // migrated project must keep reading it that way.
+    assert.ok(
+      parsed.project.ports.every(
+        (port) => port.widthMeasurement === "developed",
+      ),
+    );
+    assert.equal(parsed.project.crankcase.volumeAtBdcCc, "");
+    assert.equal(parsed.project.exhaust.gasVelocityMps, "500");
+  }
+});
+
+test("a schema 7 project keeps its declared width basis", () => {
+  const project = cloneDemonstrationProject();
+  const parsed = validateProjectDocument(project);
+
+  assert.equal(parsed.ok, true);
+  if (parsed.ok) {
+    assert.ok(
+      parsed.project.ports.every((port) => port.widthMeasurement === "chord"),
+    );
+  }
+});
+
+test("rejects an unknown width basis and a negative crankcase volume", () => {
+  const badBasis = cloneDemonstrationProject() as unknown as Record<
+    string,
+    unknown
+  >;
+  (badBasis.ports as Array<Record<string, unknown>>)[0].widthMeasurement =
+    "diagonal";
+  assert.equal(validateProjectDocument(badBasis).ok, false);
+
+  const badCase = cloneDemonstrationProject();
+  badCase.crankcase.volumeAtBdcCc = "-40";
+  assert.equal(validateProjectDocument(badCase).ok, false);
+});
+
+test("a schema 7 project round trips through JSON and a share fragment", () => {
+  const project = cloneDemonstrationProject();
+  project.crankcase.volumeAtBdcCc = "690";
+  project.exhaust.gasVelocityMps = "520";
+
+  const viaJson = parseProjectJson(serialiseProject(project));
+  assert.equal(viaJson.ok, true);
+  if (viaJson.ok) assert.deepEqual(viaJson.project, project);
+
+  const viaFragment = decodeProjectFragment(encodeProjectFragment(project));
+  assert.equal(viaFragment.ok, true);
+  if (viaFragment.ok) assert.deepEqual(viaFragment.project, project);
+});

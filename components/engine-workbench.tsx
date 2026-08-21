@@ -596,6 +596,7 @@ function PortEditor({
   port,
   analysis,
   liftComparison,
+  boreMm,
   strokeMm,
   onUpdate,
   onRemove,
@@ -604,6 +605,7 @@ function PortEditor({
   port: PortDraft;
   analysis: PortAnalysis | undefined;
   liftComparison: CylinderLiftPortComparison | undefined;
+  boreMm: number | null;
   strokeMm: number | null;
   onUpdate: (patch: Partial<PortDraft>) => void;
   onRemove?: () => void;
@@ -767,9 +769,34 @@ function PortEditor({
               unit="mm"
               minimum={0}
               exclusiveMinimum
+              maximum={boreMm ?? undefined}
               onChange={(widthMm) => onUpdate({ widthMm })}
               help="Width of one idealised rectangular window."
             />
+            <label className="field field-compact">
+              <span className="field-label">Width measured as</span>
+              <span className="select-shell">
+                <select
+                  value={port.widthMeasurement}
+                  onChange={(event) =>
+                    onUpdate({
+                      widthMeasurement: event.target
+                        .value as PortDraft["widthMeasurement"],
+                    })
+                  }
+                >
+                  <option value="chord">Chord across the window</option>
+                  <option value="developed">Developed along the liner</option>
+                </select>
+              </span>
+              <span className="field-derived">
+                <small>
+                  {port.widthMeasurement === "chord"
+                    ? "A caliper reads the chord. The area uses the longer width developed along the bore."
+                    : "The entered width already follows the bore and is used as it stands."}
+                </small>
+              </span>
+            </label>
             <NumberField
               compact
               label="Window height"
@@ -2267,6 +2294,28 @@ export function EngineWorkbench({
     });
   }
 
+  function updateCrankcase<K extends keyof EngineProjectDraft["crankcase"]>(
+    key: K,
+    value: EngineProjectDraft["crankcase"][K],
+  ) {
+    noteEdit();
+    setProject((current) => ({
+      ...current,
+      crankcase: { ...current.crankcase, [key]: value },
+    }));
+  }
+
+  function updateExhaust<K extends keyof EngineProjectDraft["exhaust"]>(
+    key: K,
+    value: EngineProjectDraft["exhaust"][K],
+  ) {
+    noteEdit();
+    setProject((current) => ({
+      ...current,
+      exhaust: { ...current.exhaust, [key]: value },
+    }));
+  }
+
   function nudgeCylinderLift(deltaMm: number) {
     const current = requestedCylinderLiftMm ?? 0;
     const maximum = analysis.cylinderLift.maximumThicknessMm ?? Number.POSITIVE_INFINITY;
@@ -3330,6 +3379,7 @@ export function EngineWorkbench({
                     liftComparison={analysis.cylinderLift.ports.find(
                       (item) => item.id === port.id,
                     )}
+                    boreMm={parseLocaleNumber(project.geometry.boreMm)}
                     strokeMm={geometryStrokeMm}
                     onUpdate={(patch) => updatePort(port.id, patch)}
                     onRemove={index > 3 ? () => removePort(port.id) : undefined}
@@ -4050,6 +4100,59 @@ export function EngineWorkbench({
             </details>
 
             <p className="control-group-label">Advanced measurements</p>
+
+            <details className="control-section">
+              <summary>
+                <span>
+                  <strong>Crankcase and exhaust resonance</strong>
+                  <small>Primary compression and tuned length</small>
+                </span>
+              </summary>
+              <div className="control-section-body">
+                <NumberField
+                  label="Crankcase volume at BDC"
+                  value={project.crankcase.volumeAtBdcCc}
+                  unit="cc"
+                  minimum={0}
+                  exclusiveMinimum
+                  help="Measured case volume with the piston at BDC, including the descending piston. This is the datum for primary compression."
+                  onChange={(value) =>
+                    updateCrankcase("volumeAtBdcCc", value)
+                  }
+                />
+                <div className="inline-result">
+                  <span>Primary compression ratio</span>
+                  <strong>
+                    {analysis.crankcase.primaryCompressionRatio === null
+                      ? "Not set"
+                      : `${formatNumber(analysis.crankcase.primaryCompressionRatio, 3)}:1`}
+                  </strong>
+                </div>
+                <NumberField
+                  label="Assumed exhaust gas wave speed"
+                  value={project.exhaust.gasVelocityMps}
+                  unit="m/s"
+                  minimum={0}
+                  exclusiveMinimum
+                  help="Rises with exhaust gas temperature. Around 500 m/s is a common starting assumption. Nothing else in the project determines it."
+                  onChange={(value) => updateExhaust("gasVelocityMps", value)}
+                />
+                <div className="inline-result">
+                  <span>Resonant exhaust length</span>
+                  <strong>
+                    {analysis.exhaustResonance.tunedLengthMm === null
+                      ? "Not set"
+                      : `${formatNumber(analysis.exhaustResonance.tunedLengthMm, 0)} mm`}
+                  </strong>
+                </div>
+                <p className="fine-print">
+                  Measured from the piston face to the centre of the rear cone.
+                  A first-order length from the exhaust duration and engine
+                  speed only. It does not model pipe diameters, cone angles or
+                  wave superposition, and no power effect is predicted.
+                </p>
+              </div>
+            </details>
 
             <details className="control-section">
               <summary>
@@ -5277,8 +5380,22 @@ export function EngineWorkbench({
                     <dt>Radial band width</dt>
                     <dd>{formatNumber(analysis.squish.bandWidthMm, 2)} mm</dd>
                   </div>
+                  <div>
+                    <dt>Maximum squish velocity</dt>
+                    <dd>
+                      {analysis.squish.maximumVelocityMps === null
+                        ? "Not available"
+                        : `${formatNumber(analysis.squish.maximumVelocityMps, 1)} m/s at ${formatNumber(analysis.squish.velocityPeakAngleDeg, 1)}° BTDC`}
+                    </dd>
+                  </div>
                 </dl>
               </div>
+              <p className="model-note">
+                Squish velocity is a one-dimensional geometric model of charge
+                displaced from the band into the bowl at the mean measured gap.
+                It excludes gas inertia, blow-by and chamber shape, and predicts
+                no combustion outcome.
+              </p>
               {analysis.squish.belowManufacturerMinimum ? (
                 <p className="warning-note">
                   The measured minimum is below the manufacturer minimum you entered.

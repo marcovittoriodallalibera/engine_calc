@@ -168,3 +168,19 @@ test("renames ambiguous labels and exposes the port type control", async () => {
   // Signed corrections are not tolerances.
   assert.doesNotMatch(html, /± cc/);
 });
+
+test("renders the crankcase, resonance and squish velocity additions", async () => {
+  const response = await render();
+  const html = await response.text();
+
+  assert.match(html, /Crankcase volume at BDC/);
+  assert.match(html, /Primary compression ratio/);
+  assert.match(html, /Assumed exhaust gas wave speed/);
+  assert.match(html, /Resonant exhaust length/);
+  assert.match(html, /Maximum squish velocity/);
+  assert.match(html, /Width measured as/);
+  assert.match(html, /Chord across the window/);
+  // Every added model states its boundary.
+  assert.match(html, /does not model pipe diameters/);
+  assert.match(html, /predicts\s+no combustion outcome/i);
+});

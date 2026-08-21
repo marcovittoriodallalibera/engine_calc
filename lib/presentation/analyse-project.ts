@@ -4,6 +4,7 @@ import {
   circularIntervalOverlap,
   calculateTransmission,
   crankAnglesFromTdcTravel,
+  developedPortWidth,
   portRoofTravelFromMeasurement,
   degreesToArcLength,
   degreesAtRpmToMilliseconds,
@@ -16,9 +17,11 @@ import {
   integrateRectangularPortAngleArea,
   integrateRotaryOverlapArea,
   intakeTransferMargin,
+  maximumSquishVelocity,
   meanPistonSpeed,
   modelEngineCharacter,
   pistonTravelFromTdc,
+  primaryCompressionRatio,
   resolveRotaryValveArcGeometry,
   rotaryValveTiming,
   specificTimeArea,
@@ -29,6 +32,7 @@ import {
   symmetricPortTimingFromOpening,
   targetClearanceVolumeForTrappedRatio,
   trappedCompressionRatio,
+  tunedExhaustLength,
   type CircularInterval,
   type EngineCharacterResult,
   type LinearAngleSegment,
@@ -57,6 +61,9 @@ export interface PortAnalysis {
   durationMs: number | null;
   interval: CircularInterval;
   widthMm: number | null;
+  widthMeasurement: PortDraft["widthMeasurement"];
+  /** Width along the liner, which is what the port area integration uses. */
+  developedWidthMm: number | null;
   heightMm: number | null;
   count: number | null;
   maximumAreaMm2: number | null;
@@ -292,6 +299,14 @@ interface EngineProjectAnalysisCore {
       }>;
     }>;
   } | null;
+  crankcase: {
+    volumeAtBdcCc: number | null;
+    primaryCompressionRatio: number | null;
+  };
+  exhaustResonance: {
+    tunedLengthMm: number | null;
+    gasVelocityMps: number | null;
+  };
   compression: {
     clearanceVolumeMode: "measured-total" | "component-breakdown";
     geometricRatio: number | null;
@@ -318,6 +333,8 @@ interface EngineProjectAnalysisCore {
     bowlDiameterMm: number | null;
     manufacturerMinimumMm: number | null;
     belowManufacturerMinimum: boolean | null;
+    maximumVelocityMps: number | null;
+    velocityPeakAngleDeg: number | null;
   };
   diagnostics: string[];
   advisories: AnalysisAdvisory[];
@@ -1026,6 +1043,7 @@ interface PortAnalysisResolution {
 
 function analysePort(
   port: PortDraft,
+  boreMm: number,
   strokeMm: number,
   rodLengthMm: number,
   crownBelowDeckAtTdcMm: number | null,
@@ -1067,6 +1085,17 @@ function analysePort(
   if (widthMm !== null && widthMm <= 0) {
     diagnostics.push(`${port.label} width must be greater than zero.`);
   }
+
+  // A caliper reads the chord; the port window follows the bore, so the area
+  // integration needs the width developed along the liner.
+  let developedWidthMm: number | null = widthMm;
+  if (widthMm !== null && widthMm > 0 && port.widthMeasurement === "chord") {
+    const developed = developedPortWidth(boreMm, widthMm);
+    for (const message of diagnosticMessages(developed)) {
+      diagnostics.push(`${port.label}: ${message}`);
+    }
+    developedWidthMm = developed.value?.developedWidthMm ?? null;
+  }
   if (heightMm !== null && heightMm <= 0) {
     diagnostics.push(`${port.label} height must be greater than zero.`);
   }
@@ -1080,8 +1109,8 @@ function analysePort(
   let angleAreaMm2Deg: number | null = null;
   let portSpecificTimeArea: number | null = null;
   if (
-    widthMm !== null &&
-    widthMm > 0 &&
+    developedWidthMm !== null &&
+    developedWidthMm > 0 &&
     heightMm !== null &&
     heightMm > 0 &&
     count !== null &&
@@ -1092,7 +1121,7 @@ function analysePort(
       strokeMm,
       rodLengthMm,
       roofTravelFromTdcMm: effectiveTravelFromTdcMm,
-      portWidthMm: widthMm,
+      portWidthMm: developedWidthMm ?? widthMm,
       portHeightMm: heightMm,
       portCount: count,
       startAngleDeg: effectiveTiming.openingAngleDeg,
@@ -1146,8 +1175,8 @@ function analysePort(
           openingAngleDeg: number,
         ): { angleArea: number | null; timeArea: number | null } => {
           if (
-            widthMm === null ||
-            widthMm <= 0 ||
+            developedWidthMm === null ||
+            developedWidthMm <= 0 ||
             heightMm === null ||
             heightMm <= 0 ||
             count === null ||
@@ -1160,7 +1189,7 @@ function analysePort(
             strokeMm,
             rodLengthMm,
             roofTravelFromTdcMm,
-            portWidthMm: widthMm,
+            portWidthMm: developedWidthMm ?? widthMm,
             portHeightMm: heightMm,
             portCount: count,
             startAngleDeg: openingAngleDeg,
@@ -1213,6 +1242,8 @@ function analysePort(
       durationMs: durationMs(effectiveTiming.durationDeg, rpm),
       interval: effectiveTiming.interval,
       widthMm,
+      widthMeasurement: port.widthMeasurement,
+      developedWidthMm,
       heightMm,
       count,
       maximumAreaMm2,
@@ -1316,6 +1347,8 @@ function analyseProjectCore(
       },
       character: null,
       characterGeometry: null,
+      crankcase: { volumeAtBdcCc: null, primaryCompressionRatio: null },
+      exhaustResonance: { tunedLengthMm: null, gasVelocityMps: null },
       compression: {
         clearanceVolumeMode: project.compression.volumeMode,
         geometricRatio: null,
@@ -1342,6 +1375,8 @@ function analyseProjectCore(
         bowlDiameterMm: null,
         manufacturerMinimumMm: null,
         belowManufacturerMinimum: null,
+        maximumVelocityMps: null,
+        velocityPeakAngleDeg: null,
       },
       diagnostics: [
         "Enter a positive bore, stroke and rod length. Rod length must exceed half the stroke.",
@@ -1396,6 +1431,7 @@ function analyseProjectCore(
     draft: port,
     resolution: analysePort(
       port,
+      boreMm,
       strokeMm,
       rodLengthMm,
       crownBelowDeckAtTdcMm,
@@ -1861,6 +1897,37 @@ function analyseProjectCore(
         }).value
       : null;
 
+  const crankcaseVolumeAtBdcCc = parseLocaleNumber(
+    project.crankcase.volumeAtBdcCc,
+  );
+  const primaryCompressionResult =
+    crankcaseVolumeAtBdcCc !== null && displacementCc !== null
+      ? primaryCompressionRatio({
+          crankcaseVolumeAtBdcCc,
+          sweptVolumeCc: displacementCc,
+        })
+      : null;
+  if (primaryCompressionResult) {
+    diagnostics.push(...diagnosticMessages(primaryCompressionResult));
+  }
+  const primaryCompression = primaryCompressionResult?.value ?? null;
+
+  const exhaustGasVelocityMps = parseLocaleNumber(
+    project.exhaust.gasVelocityMps,
+  );
+  const tunedLengthResult =
+    exhaust && rpm !== null && exhaustGasVelocityMps !== null
+      ? tunedExhaustLength({
+          exhaustDurationDeg: exhaust.durationDeg,
+          rpm,
+          gasVelocityMps: exhaustGasVelocityMps,
+        })
+      : null;
+  if (tunedLengthResult) {
+    diagnostics.push(...diagnosticMessages(tunedLengthResult));
+  }
+  const tunedLength = tunedLengthResult?.value ?? null;
+
   const gaps = [
     project.squish.gapNorthMm,
     project.squish.gapEastMm,
@@ -1903,6 +1970,30 @@ function analyseProjectCore(
   const manufacturerMinimumMm = parseLocaleNumber(
     project.squish.manufacturerMinimumMm,
   );
+
+  const squishVelocityResult =
+    squishGeometry && gapStatistics && rpm !== null && gapStatistics.meanMm > 0
+      ? maximumSquishVelocity({
+          strokeMm,
+          rodLengthMm,
+          boreMm,
+          bowlDiameterMm: squishGeometry.bowlDiameterMm,
+          squishGapMm: gapStatistics.meanMm,
+          rpm,
+        })
+      : null;
+  const squishVelocity = squishVelocityResult?.value ?? null;
+
+  // The chamber has to physically hold what the squish band and bowl imply.
+  if (squishGeometry && gapStatistics && clearanceVolume !== null) {
+    const bandVolumeCc =
+      (squishGeometry.squishBandAreaMm2 * gapStatistics.meanMm) / 1000;
+    if (bandVolumeCc > clearanceVolume) {
+      diagnostics.push(
+        `The squish band alone holds ${bandVolumeCc.toFixed(2)} cc, which is more than the ${clearanceVolume.toFixed(2)} cc clearance volume. The chamber measurements disagree.`,
+      );
+    }
+  }
   const characterRpmMinimum = parseLocaleNumber(project.character.rpmMinimum);
   const characterRpmMaximum = parseLocaleNumber(project.character.rpmMaximum);
   const characterRpmStep = parseLocaleNumber(project.character.rpmStep);
@@ -2404,6 +2495,14 @@ function analyseProjectCore(
     },
     character,
     characterGeometry,
+    crankcase: {
+      volumeAtBdcCc: crankcaseVolumeAtBdcCc,
+      primaryCompressionRatio: primaryCompression?.ratio ?? null,
+    },
+    exhaustResonance: {
+      tunedLengthMm: tunedLength?.tunedLengthMm ?? null,
+      gasVelocityMps: exhaustGasVelocityMps,
+    },
     compression: {
       clearanceVolumeMode: project.compression.volumeMode,
       geometricRatio: geometric?.ratio ?? null,
@@ -2427,6 +2526,8 @@ function analyseProjectCore(
         gapStatistics && manufacturerMinimumMm !== null
           ? gapStatistics.minimumMm < manufacturerMinimumMm
           : null,
+      maximumVelocityMps: squishVelocity?.maximumSquishVelocityMps ?? null,
+      velocityPeakAngleDeg: squishVelocity?.crankAngleAtMaximumDeg ?? null,
     },
     diagnostics: Array.from(
       new Set([
