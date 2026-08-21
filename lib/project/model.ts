@@ -1,11 +1,13 @@
-export const PROJECT_SCHEMA_VERSION = 6 as const;
-export const PROJECT_STORAGE_KEY = "phase360.project.v6";
+export const PROJECT_SCHEMA_VERSION = 7 as const;
+export const PROJECT_STORAGE_KEY = "phase360.project.v7";
+export const LEGACY_SCHEMA_6_PROJECT_STORAGE_KEY = "phase360.project.v6";
 export const LEGACY_SCHEMA_5_PROJECT_STORAGE_KEY = "phase360.project.v5";
 export const LEGACY_SCHEMA_4_PROJECT_STORAGE_KEY = "phase360.project.v4";
 export const LEGACY_SCHEMA_3_PROJECT_STORAGE_KEY = "phase360.project.v3";
 export const LEGACY_SCHEMA_2_PROJECT_STORAGE_KEY = "phase360.project.v2";
 export const LEGACY_PROJECT_STORAGE_KEY = "phase360.project.v1";
 export const LEGACY_PROJECT_STORAGE_KEYS = [
+  LEGACY_SCHEMA_6_PROJECT_STORAGE_KEY,
   LEGACY_SCHEMA_5_PROJECT_STORAGE_KEY,
   LEGACY_SCHEMA_4_PROJECT_STORAGE_KEY,
   LEGACY_SCHEMA_3_PROJECT_STORAGE_KEY,
@@ -48,6 +50,15 @@ export interface TransmissionGearDraft {
   drivenGearTeeth: string;
 }
 
+/**
+ * How the entered port width relates to the liner.
+ *
+ * "chord" is what a caliper reads straight across the window; the developed
+ * width along the liner is longer. "developed" means the entered value already
+ * follows the bore, which is how every project before schema 7 was treated.
+ */
+export type PortWidthMeasurement = "chord" | "developed";
+
 export interface PortDraft {
   id: string;
   label: string;
@@ -56,6 +67,7 @@ export interface PortDraft {
   sourceMode: PortSourceMode;
   sourceValue: string;
   widthMm: string;
+  widthMeasurement: PortWidthMeasurement;
   heightMm: string;
   count: string;
   uncertaintyMm: string;
@@ -107,6 +119,15 @@ export interface EngineProjectDraft {
     gears: TransmissionGearDraft[];
     wheelRollingCircumferenceMm: string;
     maximumRpm: string;
+  };
+  crankcase: {
+    /** Case volume with the piston at BDC, which is the primary-compression datum. */
+    volumeAtBdcCc: string;
+    volumeUncertaintyCc: string;
+  };
+  exhaust: {
+    /** Assumed exhaust gas wave speed used only for the tuned-length estimate. */
+    gasVelocityMps: string;
   };
   compression: {
     volumeMode: "measured-total" | "component-breakdown";
@@ -161,6 +182,7 @@ export const demonstrationProject: EngineProjectDraft = {
       sourceMode: "travel-from-tdc",
       sourceValue: "30",
       widthMm: "39",
+      widthMeasurement: "chord",
       heightMm: "17",
       count: "1",
       uncertaintyMm: "0.10",
@@ -173,6 +195,7 @@ export const demonstrationProject: EngineProjectDraft = {
       sourceMode: "travel-from-tdc",
       sourceValue: "40",
       widthMm: "16",
+      widthMeasurement: "chord",
       heightMm: "9",
       count: "2",
       uncertaintyMm: "0.10",
@@ -185,6 +208,7 @@ export const demonstrationProject: EngineProjectDraft = {
       sourceMode: "travel-from-tdc",
       sourceValue: "39.2",
       widthMm: "11",
+      widthMeasurement: "chord",
       heightMm: "9",
       count: "2",
       uncertaintyMm: "0.10",
@@ -197,6 +221,7 @@ export const demonstrationProject: EngineProjectDraft = {
       sourceMode: "travel-from-tdc",
       sourceValue: "39.8",
       widthMm: "14",
+      widthMeasurement: "chord",
       heightMm: "9",
       count: "1",
       uncertaintyMm: "0.10",
@@ -263,6 +288,13 @@ export const demonstrationProject: EngineProjectDraft = {
     ],
     wheelRollingCircumferenceMm: "1235",
     maximumRpm: "11000",
+  },
+  crankcase: {
+    volumeAtBdcCc: "",
+    volumeUncertaintyCc: "",
+  },
+  exhaust: {
+    gasVelocityMps: "500",
   },
   compression: {
     volumeMode: "measured-total",
@@ -488,6 +520,10 @@ const sourceModes = new Set<PortSourceMode>([
   "opening-angle",
   "duration",
 ]);
+const portWidthMeasurements = new Set<PortWidthMeasurement>([
+  "chord",
+  "developed",
+]);
 const inductionModes = new Set<InductionMode>(["rotary", "reed", "none"]);
 const rotaryTimingSources = new Set<RotaryTimingSource>([
   "direct-angles",
@@ -523,6 +559,7 @@ export function validateProjectDocument(value: unknown): ProjectValidation {
     value.schemaVersion !== 3 &&
     value.schemaVersion !== 4 &&
     value.schemaVersion !== 5 &&
+    value.schemaVersion !== 6 &&
     value.schemaVersion !== PROJECT_SCHEMA_VERSION
   ) {
     return {
@@ -598,6 +635,11 @@ export function validateProjectDocument(value: unknown): ProjectValidation {
       sourceModes.has(item.sourceMode as PortSourceMode) &&
       isText(item.sourceValue, 32) &&
       isText(item.widthMm, 32) &&
+      // Projects before schema 7 carry no width measurement basis.
+      (schemaVersion < 7 ||
+        portWidthMeasurements.has(
+          item.widthMeasurement as PortWidthMeasurement,
+        )) &&
       isText(item.heightMm, 32) &&
       isText(item.count, 16) &&
       isText(item.uncertaintyMm, 32)
@@ -936,6 +978,26 @@ export function validateProjectDocument(value: unknown): ProjectValidation {
             transmission.wheelRollingCircumferenceMm as string,
           maximumRpm: transmission.maximumRpm as string,
         };
+  const crankcaseSource =
+    schemaVersion >= 7 && isRecord(value.crankcase) ? value.crankcase : null;
+  const crankcaseVolumeAtBdcCc =
+    crankcaseSource === null ? "" : crankcaseSource.volumeAtBdcCc ?? "";
+  const crankcaseVolumeUncertaintyCc =
+    crankcaseSource === null ? "" : crankcaseSource.volumeUncertaintyCc ?? "";
+  if (
+    !isOptionalNonNegativeNumberText(crankcaseVolumeAtBdcCc, 32) ||
+    !isOptionalNonNegativeNumberText(crankcaseVolumeUncertaintyCc, 32)
+  ) {
+    return { ok: false, message: "Crankcase volume is invalid." };
+  }
+  const exhaustSource =
+    schemaVersion >= 7 && isRecord(value.exhaust) ? value.exhaust : null;
+  const exhaustGasVelocityMps =
+    exhaustSource === null ? "500" : exhaustSource.gasVelocityMps ?? "500";
+  if (!isOptionalNonNegativeNumberText(exhaustGasVelocityMps, 32)) {
+    return { ok: false, message: "Exhaust gas wave speed is invalid." };
+  }
+
   const compression = value.compression;
   const squish = value.squish;
   const presentation = value.presentation;
@@ -1018,6 +1080,12 @@ export function validateProjectDocument(value: unknown): ProjectValidation {
           sourceMode: port.sourceMode as PortSourceMode,
           sourceValue: port.sourceValue as string,
           widthMm: port.widthMm as string,
+          // Before schema 7 the width was integrated as a flat rectangle, so a
+          // migrated project keeps that reading and its results are unchanged.
+          widthMeasurement:
+            schemaVersion >= 7
+              ? (port.widthMeasurement as PortWidthMeasurement)
+              : "developed",
           heightMm: port.heightMm as string,
           count: port.count as string,
           uncertaintyMm: port.uncertaintyMm as string,
@@ -1046,6 +1114,13 @@ export function validateProjectDocument(value: unknown): ProjectValidation {
         rpmStep: characterRpmStep as string,
       },
       transmission: migratedTransmission,
+      crankcase: {
+        volumeAtBdcCc: crankcaseVolumeAtBdcCc as string,
+        volumeUncertaintyCc: crankcaseVolumeUncertaintyCc as string,
+      },
+      exhaust: {
+        gasVelocityMps: exhaustGasVelocityMps as string,
+      },
       compression: {
         volumeMode: compression.volumeMode as EngineProjectDraft["compression"]["volumeMode"],
         clearanceVolumeCc: compression.clearanceVolumeCc as string,

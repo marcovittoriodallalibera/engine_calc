@@ -679,3 +679,64 @@ export function degreesAtRpmToMilliseconds(
     milliseconds: (degrees * 1000) / (6 * rpm),
   });
 }
+
+export interface TunedExhaustLengthInput {
+  exhaustDurationDeg: number;
+  rpm: number;
+  gasVelocityMps: number;
+}
+
+export interface TunedExhaustLengthResult {
+  tunedLengthMm: number;
+  exhaustDurationDeg: number;
+  rpm: number;
+  gasVelocityMps: number;
+}
+
+/**
+ * Resonant exhaust length from the exhaust duration and a target speed.
+ *
+ * The returning wave has to travel to the reflector and back within the
+ * exhaust-open period, so `2L = v * t` with `t = duration / (6 * rpm)`
+ * seconds. Expressed in millimetres this is `1000 * v * duration / (12 * rpm)`.
+ *
+ * The gas wave speed is an assumption, not a measurement: it rises with
+ * exhaust temperature and is not derived from anything else in this project.
+ * The result is a first-order length, with no account of pipe diameters, cone
+ * angles, port timing area or wave superposition.
+ */
+export function tunedExhaustLength(
+  input: TunedExhaustLengthInput,
+): CalculationResult<TunedExhaustLengthResult> {
+  const diagnostics = collectDiagnostics(
+    positiveNumberDiagnostic(input.exhaustDurationDeg, "exhaustDurationDeg"),
+    positiveNumberDiagnostic(input.rpm, "rpm"),
+    positiveNumberDiagnostic(input.gasVelocityMps, "gasVelocityMps"),
+  );
+  if (
+    Number.isFinite(input.exhaustDurationDeg) &&
+    input.exhaustDurationDeg > 360
+  ) {
+    diagnostics.push(
+      errorDiagnostic(
+        "DURATION_OUTSIDE_CYCLE",
+        "exhaustDurationDeg cannot exceed 360 degrees.",
+        "exhaustDurationDeg",
+      ),
+    );
+  }
+  if (diagnostics.some((item) => item.severity === "error")) {
+    return calculationResult(null, diagnostics);
+  }
+  return calculationResult(
+    {
+      tunedLengthMm:
+        (1000 * input.gasVelocityMps * input.exhaustDurationDeg) /
+        (12 * input.rpm),
+      exhaustDurationDeg: input.exhaustDurationDeg,
+      rpm: input.rpm,
+      gasVelocityMps: input.gasVelocityMps,
+    },
+    diagnostics,
+  );
+}

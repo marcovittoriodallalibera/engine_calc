@@ -2428,6 +2428,7 @@ export function EngineWorkbench({
       sourceMode: "travel-from-tdc",
       sourceValue: "40",
       widthMm: "10",
+      widthMeasurement: "chord",
       heightMm: "8",
       count: "2",
       uncertaintyMm: "0.10",

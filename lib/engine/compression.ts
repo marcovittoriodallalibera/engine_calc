@@ -5,6 +5,7 @@ import {
   errorDiagnostic,
   nonNegativeNumberDiagnostic,
   positiveNumberDiagnostic,
+  warningDiagnostic,
   type CalculationResult,
   type Diagnostic,
 } from "./result.ts";
@@ -394,6 +395,58 @@ export function evaluateCompressionScenario(
   if (!before.value || !after.value) return calculationResult(null, diagnostics);
   return calculationResult(
     { change, clearanceVolumeDeltaCc, before: before.value, after: after.value },
+    diagnostics,
+  );
+}
+
+export interface PrimaryCompressionInput {
+  crankcaseVolumeAtBdcCc: number;
+  sweptVolumeCc: number;
+}
+
+export interface PrimaryCompressionResult {
+  crankcaseVolumeAtBdcCc: number;
+  sweptVolumeCc: number;
+  ratio: number;
+}
+
+/**
+ * Crankcase (primary) compression ratio.
+ *
+ * The case volume at BDC already includes the descending piston, so the ratio
+ * compares that volume plus the swept volume against the volume alone. This is
+ * a geometric volume ratio, not a pressure prediction.
+ */
+export function primaryCompressionRatio(
+  input: PrimaryCompressionInput,
+): CalculationResult<PrimaryCompressionResult> {
+  const diagnostics = collectDiagnostics(
+    positiveNumberDiagnostic(
+      input.crankcaseVolumeAtBdcCc,
+      "crankcaseVolumeAtBdcCc",
+    ),
+    positiveNumberDiagnostic(input.sweptVolumeCc, "sweptVolumeCc"),
+  );
+  if (diagnostics.some((item) => item.severity === "error")) {
+    return calculationResult(null, diagnostics);
+  }
+  if (input.crankcaseVolumeAtBdcCc <= input.sweptVolumeCc) {
+    diagnostics.push(
+      warningDiagnostic(
+        "CRANKCASE_VOLUME_BELOW_SWEPT",
+        "The crankcase volume at BDC is not larger than the swept volume, which is outside the range of a running two-stroke.",
+        "crankcaseVolumeAtBdcCc",
+      ),
+    );
+  }
+  return calculationResult(
+    {
+      crankcaseVolumeAtBdcCc: input.crankcaseVolumeAtBdcCc,
+      sweptVolumeCc: input.sweptVolumeCc,
+      ratio:
+        (input.crankcaseVolumeAtBdcCc + input.sweptVolumeCc) /
+        input.crankcaseVolumeAtBdcCc,
+    },
     diagnostics,
   );
 }
