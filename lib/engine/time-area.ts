@@ -34,6 +34,11 @@ export interface RectangularPortAngleAreaInput extends RectangularPortGeometry {
   startAngleDeg?: number;
   endAngleDeg?: number;
   integrationStepDeg?: number;
+  /**
+   * Set when the port never closes, so that a coincident start and end angle
+   * integrates the whole cycle instead of an empty interval.
+   */
+  fullCycle?: boolean;
 }
 
 export interface RectangularPortAngleAreaResult {
@@ -193,6 +198,9 @@ export function integrateRectangularPortAngleArea(
 
   let endAngleDeg = suppliedEnd;
   while (endAngleDeg < startAngleDeg) endAngleDeg += 360;
+  if (input.fullCycle === true && endAngleDeg === startAngleDeg) {
+    endAngleDeg = startAngleDeg + 360;
+  }
   if (endAngleDeg - startAngleDeg > 360) {
     diagnostics.push(
       errorDiagnostic(

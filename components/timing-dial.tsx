@@ -10,6 +10,8 @@ export interface TimingPhaseArc {
   colour: string;
   label: string;
   category: string;
+  /** Set when the event never closes, so a coincident start and end spans the whole cycle. */
+  fullCircle?: boolean;
   /** Optional logical ring. Lower values are placed further from the centre. */
   ring?: number;
 }

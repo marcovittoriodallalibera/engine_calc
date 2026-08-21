@@ -47,6 +47,21 @@ travel from TDC = roof depth from deck - crown below deck at TDC
 
 The initial interface records the deck position as measurement context. Direct roof-travel inputs are already relative to the piston crown and must not be adjusted twice.
 
+### Port width along the liner
+
+A caliper reads the chord straight across a port window, but the window follows
+the bore, so the flow-facing width is the arc that chord subtends:
+
+```text
+developed width = B asin(w / B)
+```
+
+The understatement grows with width. A 39 mm chord in a 60 mm bore develops to
+42.455 mm, which is 8.1 percent more area than the chord implies. Each port
+declares whether its entered width is a chord or already developed. Projects
+saved before schema 7 are read as already developed, which is how they were
+integrated, so their results do not change.
+
 ## Timing relationships
 
 One-sided blowdown is the difference between transfer and exhaust opening angles:
@@ -125,6 +140,20 @@ Clearance volume may be entered as one assembled measurement or as an auditable 
 
 The trapped ratio begins at geometric exhaust closure. It is not cylinder pressure and does not account for pressure waves, temperature, retained exhaust gas, trapping efficiency or combustion.
 
+### Primary compression
+
+For a measured crankcase volume at BDC `Vcc`, which already includes the
+descending piston, and swept volume `Vd`:
+
+```text
+primary CR = (Vcc + Vd) / Vcc
+```
+
+This is a geometric volume ratio. It says nothing about crankcase pumping
+efficiency, inlet restriction, reed or rotary flow, or delivery ratio. A case
+volume smaller than the swept volume is reported, since that is outside the
+range of a running engine.
+
 ## Squish
 
 Four gap observations produce minimum, maximum, mean, range, maximum deviation and population standard deviation. For a centred circular bowl of diameter `Db` in a bore `B`:
@@ -135,6 +164,24 @@ radial band width = (B - Db) / 2
 ```
 
 This geometry does not model non-circular bowls, band angle, piston crown contour or running deformation.
+
+### Squish velocity
+
+The squish band holds `A_band g(theta)`. As the piston rises that volume is
+pushed through the annulus at the bowl edge, whose area is `pi Db g(theta)`:
+
+```text
+v(theta) = A_band * piston speed(theta) / (pi Db g(theta))
+```
+
+The reported figure is the maximum over the approach to TDC, evaluated at the
+mean measured gap, together with the crank angle at which it peaks. Piston speed
+falls to zero at TDC while the gap reaches its minimum, so the peak sits between
+the two.
+
+This is the standard one-dimensional idealisation: incompressible, blind to gas
+inertia, ring blow-by and chamber shape. It is a geometric rate, not a
+combustion or detonation prediction, and no target value is built in.
 
 The interface accepts either bowl diameter or radial band width as the authoritative annular-band dimension and derives the other representation.
 
@@ -275,7 +322,7 @@ The model and reference set are explicitly not calibrated. No road, pressure, fl
 
 Entered uncertainty is treated as an absolute symmetric plus-or-minus bound around the entered value. The propagation is deterministic and worst-case. It is not a probability distribution, standard deviation, confidence interval, tolerance analysis or estimate of instrument accuracy. An empty uncertainty field means that no bound is reported, not that the physical measurement is exact.
 
-For piston-controlled ports, millimetre uncertainty is propagated only when the authoritative source is travel from TDC, height above BDC or depth from the deck. The two travel endpoints are transformed separately through slider-crank geometry. Because this transformation is nonlinear, especially near TDC and BDC, equal linear bounds can produce unequal angular changes. If the travel interval leaves the reachable 0 to stroke domain, the nominal result remains available and the affected bound is withheld rather than clipped. Direct opening-angle and duration inputs do not currently accept an angular uncertainty.
+For piston-controlled ports, millimetre uncertainty is propagated only when the authoritative source is travel from TDC, height above BDC or depth from the deck. The two travel endpoints are transformed separately through slider-crank geometry. Because this transformation is nonlinear, especially near TDC and BDC, equal linear bounds can produce unequal angular changes. If the travel interval leaves the reachable 0 to stroke domain, the nominal result remains available and the affected bound is withheld rather than clipped. Direct opening-angle and duration inputs do not currently accept an angular uncertainty. In those modes the millimetre field is withdrawn, and a value carried over from another mode is reported as ignored rather than silently discarded.
 
 Valid port-travel bounds feed duration, blowdown, inlet-to-transfer margin, rectangular angle-area and specific time-area limits. Port width, height and count are treated as exact inputs in the current model. Bore, stroke, rod length, deck position, cylinder lift, RPM, clearance volume, squish inputs and transmission inputs also have no propagated uncertainty model.
 
@@ -348,3 +395,22 @@ The installed cylinder lift is evaluated as an active assembled configuration. R
 - raising only the exhaust roof increases exhaust duration and reduces trapped compression, while geometric compression remains unchanged if chamber volume is unchanged
 
 The effects are not compounded in the current interface.
+
+## Resonant exhaust length
+
+The returning pressure wave has to travel to the reflector and back inside the
+exhaust-open period. With duration `Ed` in degrees at `N` rpm, that period is
+`Ed / (6 N)` seconds, so for a wave speed `v` in metres per second:
+
+```text
+tuned length (mm) = 1000 v Ed / (12 N)
+```
+
+The wave speed is an assumption, not a measurement. It rises with exhaust gas
+temperature and nothing else in the project determines it, so it is an explicit
+input rather than a hidden constant.
+
+This is a first-order length to the centre of the rear cone. It does not model
+pipe diameters, cone angles, belly length, port time-area or wave superposition,
+and it predicts no power or torque effect.
+

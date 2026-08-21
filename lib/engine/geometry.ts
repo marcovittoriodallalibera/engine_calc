@@ -179,3 +179,52 @@ export function portRoofTravelFromMeasurement(
     ? calculationResult(null, diagnostics)
     : calculationResult({ travelFromTdcMm: travel }, diagnostics);
 }
+
+export interface DevelopedPortWidthResult {
+  chordWidthMm: number;
+  developedWidthMm: number;
+  subtendedAngleDeg: number;
+}
+
+/**
+ * Convert a chord width measured straight across a port into the width
+ * developed along the liner.
+ *
+ * A caliper reads the chord, but the port window follows the bore, so the
+ * flow-facing width is the arc the chord subtends: `bore * asin(chord / bore)`.
+ * The difference grows with width, reaching about 5 percent for a chord two
+ * thirds of the bore.
+ */
+export function developedPortWidth(
+  boreMm: number,
+  chordWidthMm: number,
+): CalculationResult<DevelopedPortWidthResult> {
+  const diagnostics = collectDiagnostics(
+    positiveNumberDiagnostic(boreMm, "boreMm"),
+    positiveNumberDiagnostic(chordWidthMm, "chordWidthMm"),
+  );
+  if (
+    Number.isFinite(boreMm) &&
+    Number.isFinite(chordWidthMm) &&
+    chordWidthMm > boreMm
+  ) {
+    diagnostics.push(
+      errorDiagnostic(
+        "PORT_WIDTH_EXCEEDS_BORE",
+        "A chord width cannot exceed the bore diameter.",
+        "chordWidthMm",
+      ),
+    );
+  }
+  if (diagnostics.some((item) => item.severity === "error")) {
+    return calculationResult(null, diagnostics);
+  }
+  const halfAngleRad = Math.asin(
+    Math.min(1, Math.max(-1, chordWidthMm / boreMm)),
+  );
+  return calculationResult({
+    chordWidthMm,
+    developedWidthMm: boreMm * halfAngleRad,
+    subtendedAngleDeg: (2 * halfAngleRad * 180) / Math.PI,
+  });
+}

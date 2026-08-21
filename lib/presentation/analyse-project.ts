@@ -1,7 +1,11 @@
 import {
+  blowdownFromOpeningAngles,
+  cylindricalVolumeCc,
   circularIntervalOverlap,
   calculateTransmission,
   crankAnglesFromTdcTravel,
+  developedPortWidth,
+  portRoofTravelFromMeasurement,
   degreesToArcLength,
   degreesAtRpmToMilliseconds,
   displacement,
@@ -13,9 +17,11 @@ import {
   integrateRectangularPortAngleArea,
   integrateRotaryOverlapArea,
   intakeTransferMargin,
+  maximumSquishVelocity,
   meanPistonSpeed,
   modelEngineCharacter,
   pistonTravelFromTdc,
+  primaryCompressionRatio,
   resolveRotaryValveArcGeometry,
   rotaryValveTiming,
   specificTimeArea,
@@ -26,6 +32,7 @@ import {
   symmetricPortTimingFromOpening,
   targetClearanceVolumeForTrappedRatio,
   trappedCompressionRatio,
+  tunedExhaustLength,
   type CircularInterval,
   type EngineCharacterResult,
   type LinearAngleSegment,
@@ -54,6 +61,9 @@ export interface PortAnalysis {
   durationMs: number | null;
   interval: CircularInterval;
   widthMm: number | null;
+  widthMeasurement: PortDraft["widthMeasurement"];
+  /** Width along the liner, which is what the port area integration uses. */
+  developedWidthMm: number | null;
   heightMm: number | null;
   count: number | null;
   maximumAreaMm2: number | null;
@@ -289,6 +299,14 @@ interface EngineProjectAnalysisCore {
       }>;
     }>;
   } | null;
+  crankcase: {
+    volumeAtBdcCc: number | null;
+    primaryCompressionRatio: number | null;
+  };
+  exhaustResonance: {
+    tunedLengthMm: number | null;
+    gasVelocityMps: number | null;
+  };
   compression: {
     clearanceVolumeMode: "measured-total" | "component-breakdown";
     geometricRatio: number | null;
@@ -315,6 +333,8 @@ interface EngineProjectAnalysisCore {
     bowlDiameterMm: number | null;
     manufacturerMinimumMm: number | null;
     belowManufacturerMinimum: boolean | null;
+    maximumVelocityMps: number | null;
+    velocityPeakAngleDeg: number | null;
   };
   diagnostics: string[];
   advisories: AnalysisAdvisory[];
@@ -902,6 +922,15 @@ function analyseRotaryInduction(
           "Enter the timing-track diameter and one positive measured arc shorter than the total required by the desired timing.",
         );
       }
+    } else if (project.induction.areaSource === "cylindrical-overlap") {
+      // Direct-angle timing still consumes the arc geometry for the overlap
+      // area model, so the same measurements have to be validated here.
+      if (geometryResult) diagnostics.push(...diagnosticMessages(geometryResult));
+      if (!geometryResult?.value) {
+        diagnostics.push(
+          "Arc overlap inlet area needs a timing-track diameter and one positive measured arc shorter than the total required by the desired timing.",
+        );
+      }
     }
     if (geometryUncertainty.diagnostic) {
       diagnostics.push(geometryUncertainty.diagnostic);
@@ -915,19 +944,28 @@ function analyseRotaryInduction(
   };
 }
 
+interface PortTimingResolution {
+  value: {
+    sourceValue: number;
+    travelFromTdcMm: number;
+    timing: SymmetricPortTiming;
+  } | null;
+  diagnostics: string[];
+}
+
 function timingFromPort(
   port: PortDraft,
   strokeMm: number,
   rodLengthMm: number,
   crownBelowDeckAtTdcMm: number | null,
-): {
-  sourceValue: number;
-  travelFromTdcMm: number;
-  timing: SymmetricPortTiming;
-  diagnostics: string[];
-} | null {
+): PortTimingResolution {
   const sourceValue = parseLocaleNumber(port.sourceValue);
-  if (sourceValue === null) return null;
+  if (sourceValue === null) {
+    return {
+      value: null,
+      diagnostics: ["Enter a numeric port position."],
+    };
+  }
   let travelFromTdcMm: number | null = null;
   let timing: SymmetricPortTiming | null = null;
   const diagnostics: string[] = [];
@@ -937,8 +975,22 @@ function timingFromPort(
   } else if (port.sourceMode === "height-above-bdc") {
     travelFromTdcMm = strokeMm - sourceValue;
   } else if (port.sourceMode === "depth-from-deck") {
-    if (crownBelowDeckAtTdcMm === null) return null;
-    travelFromTdcMm = sourceValue - crownBelowDeckAtTdcMm;
+    if (crownBelowDeckAtTdcMm === null) {
+      return {
+        value: null,
+        diagnostics: [
+          "Enter the piston crown position at TDC to measure roof depth from the deck.",
+        ],
+      };
+    }
+    const roofTravel = portRoofTravelFromMeasurement({
+      roofDepthFromDeckMm: sourceValue,
+      crownBelowDeckAtTdcMm,
+      strokeMm,
+    });
+    diagnostics.push(...diagnosticMessages(roofTravel));
+    if (!roofTravel.value) return { value: null, diagnostics };
+    travelFromTdcMm = roofTravel.value.travelFromTdcMm;
   } else if (port.sourceMode === "opening-angle") {
     const result = symmetricPortTimingFromOpening(sourceValue);
     diagnostics.push(...diagnosticMessages(result));
@@ -965,7 +1017,7 @@ function timingFromPort(
     }
   }
 
-  if (travelFromTdcMm === null) return null;
+  if (travelFromTdcMm === null) return { value: null, diagnostics };
   if (!timing) {
     const angle = crankAnglesFromTdcTravel({
       strokeMm,
@@ -973,39 +1025,46 @@ function timingFromPort(
       travelFromTdcMm,
     });
     diagnostics.push(...diagnosticMessages(angle));
-    if (!angle.value) return null;
+    if (!angle.value) return { value: null, diagnostics };
     const timingResult = symmetricPortTimingFromOpening(angle.value.openingAngleDeg);
     diagnostics.push(...diagnosticMessages(timingResult));
     timing = timingResult.value;
   }
-  return timing
-    ? { sourceValue, travelFromTdcMm, timing, diagnostics }
-    : null;
+  return {
+    value: timing ? { sourceValue, travelFromTdcMm, timing } : null,
+    diagnostics,
+  };
+}
+
+interface PortAnalysisResolution {
+  value: PortAnalysis | null;
+  diagnostics: string[];
 }
 
 function analysePort(
   port: PortDraft,
+  boreMm: number,
   strokeMm: number,
   rodLengthMm: number,
   crownBelowDeckAtTdcMm: number | null,
   cylinderLiftMm: number,
   rpm: number | null,
   displacementCc: number | null,
-): PortAnalysis | null {
+): PortAnalysisResolution {
   const source = timingFromPort(
     port,
     strokeMm,
     rodLengthMm,
     crownBelowDeckAtTdcMm,
   );
-  if (!source) return null;
+  const diagnostics = [...source.diagnostics];
+  if (!source.value) return { value: null, diagnostics };
   const widthMm = parseLocaleNumber(port.widthMm);
   const heightMm = parseLocaleNumber(port.heightMm);
   const count = parseLocaleNumber(port.count);
   const uncertaintyMm = parseLocaleNumber(port.uncertaintyMm);
-  const diagnostics = [...source.diagnostics];
-  const effectiveTravelFromTdcMm = source.travelFromTdcMm - cylinderLiftMm;
-  let effectiveTiming = source.timing;
+  const effectiveTravelFromTdcMm = source.value.travelFromTdcMm - cylinderLiftMm;
+  let effectiveTiming = source.value.timing;
 
   if (cylinderLiftMm > 0) {
     const shiftedAngle = crankAnglesFromTdcTravel({
@@ -1014,21 +1073,44 @@ function analysePort(
       travelFromTdcMm: effectiveTravelFromTdcMm,
     });
     diagnostics.push(...diagnosticMessages(shiftedAngle));
-    if (!shiftedAngle.value) return null;
+    if (!shiftedAngle.value) return { value: null, diagnostics };
     const shiftedTiming = symmetricPortTimingFromOpening(
       shiftedAngle.value.openingAngleDeg,
     );
     diagnostics.push(...diagnosticMessages(shiftedTiming));
-    if (!shiftedTiming.value) return null;
+    if (!shiftedTiming.value) return { value: null, diagnostics };
     effectiveTiming = shiftedTiming.value;
+  }
+
+  if (widthMm !== null && widthMm <= 0) {
+    diagnostics.push(`${port.label} width must be greater than zero.`);
+  }
+
+  // A caliper reads the chord; the port window follows the bore, so the area
+  // integration needs the width developed along the liner.
+  let developedWidthMm: number | null = widthMm;
+  if (widthMm !== null && widthMm > 0 && port.widthMeasurement === "chord") {
+    const developed = developedPortWidth(boreMm, widthMm);
+    for (const message of diagnosticMessages(developed)) {
+      diagnostics.push(`${port.label}: ${message}`);
+    }
+    developedWidthMm = developed.value?.developedWidthMm ?? null;
+  }
+  if (heightMm !== null && heightMm <= 0) {
+    diagnostics.push(`${port.label} height must be greater than zero.`);
+  }
+  if (count !== null && (!Number.isInteger(count) || count <= 0)) {
+    diagnostics.push(
+      `${port.label} count must be a whole number of one or more.`,
+    );
   }
 
   let maximumAreaMm2: number | null = null;
   let angleAreaMm2Deg: number | null = null;
   let portSpecificTimeArea: number | null = null;
   if (
-    widthMm !== null &&
-    widthMm > 0 &&
+    developedWidthMm !== null &&
+    developedWidthMm > 0 &&
     heightMm !== null &&
     heightMm > 0 &&
     count !== null &&
@@ -1039,11 +1121,12 @@ function analysePort(
       strokeMm,
       rodLengthMm,
       roofTravelFromTdcMm: effectiveTravelFromTdcMm,
-      portWidthMm: widthMm,
+      portWidthMm: developedWidthMm ?? widthMm,
       portHeightMm: heightMm,
       portCount: count,
       startAngleDeg: effectiveTiming.openingAngleDeg,
       endAngleDeg: effectiveTiming.closingAngleDeg,
+      fullCycle: effectiveTiming.interval.fullCircle,
       integrationStepDeg: 0.25,
     });
     diagnostics.push(...diagnosticMessages(integrated));
@@ -1062,13 +1145,20 @@ function analysePort(
   }
 
   let uncertainty: PortAnalysis["uncertainty"] = null;
+  const uncertaintyAppliesToMode =
+    port.sourceMode === "travel-from-tdc" ||
+    port.sourceMode === "height-above-bdc" ||
+    port.sourceMode === "depth-from-deck";
   if (
     uncertaintyMm !== null &&
     uncertaintyMm > 0 &&
-    (port.sourceMode === "travel-from-tdc" ||
-      port.sourceMode === "height-above-bdc" ||
-      port.sourceMode === "depth-from-deck")
+    !uncertaintyAppliesToMode
   ) {
+    diagnostics.push(
+      `${port.label} measurement uncertainty is in millimetres and does not apply to an angle-based timing input, so it is ignored. Switch to a travel or height input to propagate it.`,
+    );
+  }
+  if (uncertaintyMm !== null && uncertaintyMm > 0 && uncertaintyAppliesToMode) {
     const lowerTravel = effectiveTravelFromTdcMm - uncertaintyMm;
     const upperTravel = effectiveTravelFromTdcMm + uncertaintyMm;
     if (lowerTravel < 0 || upperTravel > strokeMm) {
@@ -1092,8 +1182,8 @@ function analysePort(
           openingAngleDeg: number,
         ): { angleArea: number | null; timeArea: number | null } => {
           if (
-            widthMm === null ||
-            widthMm <= 0 ||
+            developedWidthMm === null ||
+            developedWidthMm <= 0 ||
             heightMm === null ||
             heightMm <= 0 ||
             count === null ||
@@ -1106,7 +1196,7 @@ function analysePort(
             strokeMm,
             rodLengthMm,
             roofTravelFromTdcMm,
-            portWidthMm: widthMm,
+            portWidthMm: developedWidthMm ?? widthMm,
             portHeightMm: heightMm,
             portCount: count,
             startAngleDeg: openingAngleDeg,
@@ -1145,26 +1235,31 @@ function analysePort(
   }
 
   return {
-    id: port.id,
-    label: port.label,
-    kind: port.kind,
-    colour: portColours[port.kind],
-    sourceMode: port.sourceMode,
-    sourceValue: source.sourceValue,
-    travelFromTdcMm: effectiveTravelFromTdcMm,
-    openingAngleDeg: effectiveTiming.openingAngleDeg,
-    closingAngleDeg: effectiveTiming.closingAngleDeg,
-    durationDeg: effectiveTiming.durationDeg,
-    durationMs: durationMs(effectiveTiming.durationDeg, rpm),
-    interval: effectiveTiming.interval,
-    widthMm,
-    heightMm,
-    count,
-    maximumAreaMm2,
-    angleAreaMm2Deg,
-    specificTimeArea: portSpecificTimeArea,
-    uncertainty,
-    diagnostics: Array.from(new Set(diagnostics)),
+    value: {
+      id: port.id,
+      label: port.label,
+      kind: port.kind,
+      colour: portColours[port.kind],
+      sourceMode: port.sourceMode,
+      sourceValue: source.value.sourceValue,
+      travelFromTdcMm: effectiveTravelFromTdcMm,
+      openingAngleDeg: effectiveTiming.openingAngleDeg,
+      closingAngleDeg: effectiveTiming.closingAngleDeg,
+      durationDeg: effectiveTiming.durationDeg,
+      durationMs: durationMs(effectiveTiming.durationDeg, rpm),
+      interval: effectiveTiming.interval,
+      widthMm,
+      widthMeasurement: port.widthMeasurement,
+      developedWidthMm,
+      heightMm,
+      count,
+      maximumAreaMm2,
+      angleAreaMm2Deg,
+      specificTimeArea: portSpecificTimeArea,
+      uncertainty,
+      diagnostics: Array.from(new Set(diagnostics)),
+    },
+    diagnostics,
   };
 }
 
@@ -1259,6 +1354,8 @@ function analyseProjectCore(
       },
       character: null,
       characterGeometry: null,
+      crankcase: { volumeAtBdcCc: null, primaryCompressionRatio: null },
+      exhaustResonance: { tunedLengthMm: null, gasVelocityMps: null },
       compression: {
         clearanceVolumeMode: project.compression.volumeMode,
         geometricRatio: null,
@@ -1285,6 +1382,8 @@ function analyseProjectCore(
         bowlDiameterMm: null,
         manufacturerMinimumMm: null,
         belowManufacturerMinimum: null,
+        maximumVelocityMps: null,
+        velocityPeakAngleDeg: null,
       },
       diagnostics: [
         "Enter a positive bore, stroke and rod length. Rod length must exceed half the stroke.",
@@ -1293,35 +1392,103 @@ function analyseProjectCore(
     };
   }
 
+  const characterSweepMinimum = parseLocaleNumber(project.character.rpmMinimum);
+  const characterSweepMaximum = parseLocaleNumber(project.character.rpmMaximum);
+  if (
+    rpm !== null &&
+    characterSweepMinimum !== null &&
+    characterSweepMaximum !== null &&
+    (rpm < characterSweepMinimum || rpm > characterSweepMaximum)
+  ) {
+    diagnostics.push(
+      `The reference speed of ${rpm.toFixed(0)} RPM sits outside the ${characterSweepMinimum.toFixed(0)} to ${characterSweepMaximum.toFixed(0)} RPM character sweep, so the sweep does not cover it.`,
+    );
+  }
+  if (project.transmission.enabled) {
+    const gearingMaximumRpm = parseLocaleNumber(project.transmission.maximumRpm);
+    if (rpm !== null && gearingMaximumRpm !== null && rpm > gearingMaximumRpm) {
+      diagnostics.push(
+        `The reference speed of ${rpm.toFixed(0)} RPM is above the ${gearingMaximumRpm.toFixed(0)} RPM ceiling used for road speed, so it is not plotted.`,
+      );
+    }
+    const staleGears = project.transmission.gears
+      .slice(project.transmission.gearCount)
+      .filter(
+        (gear) =>
+          gear.clusterPinionTeeth.trim() !== "" ||
+          gear.drivenGearTeeth.trim() !== "",
+      );
+    if (staleGears.length > 0) {
+      diagnostics.push(
+        `${staleGears
+          .map((gear) => gear.label)
+          .join(", ")} still holds tooth counts but sits outside the ${project.transmission.gearCount}-speed gearbox, so it is ignored and exported unused.`,
+      );
+    }
+  }
+
   const displacementResult = displacement({ boreMm, strokeMm });
   const displacementCc = displacementResult.value?.displacementPerCylinderCc ?? null;
   diagnostics.push(...diagnosticMessages(displacementResult));
   const pistonSpeed = rpm ? meanPistonSpeed(strokeMm, rpm) : null;
   const meanPistonSpeedMps = pistonSpeed?.value?.metresPerSecond ?? null;
 
-  const ports = project.ports
-    .filter((port) => port.enabled)
-    .map((port) =>
-      analysePort(
-        port,
-        strokeMm,
-        rodLengthMm,
-        crownBelowDeckAtTdcMm,
-        cylinderLiftMm,
-        rpm,
-        displacementCc,
-      ),
-    )
+  const enabledPorts = project.ports.filter((port) => port.enabled);
+  const portResolutions = enabledPorts.map((port) => ({
+    draft: port,
+    resolution: analysePort(
+      port,
+      boreMm,
+      strokeMm,
+      rodLengthMm,
+      crownBelowDeckAtTdcMm,
+      cylinderLiftMm,
+      rpm,
+      displacementCc,
+    ),
+  }));
+  for (const { draft, resolution } of portResolutions) {
+    if (resolution.value) continue;
+    const label = draft.label.trim() || "A port";
+    const reasons = resolution.diagnostics.filter(
+      (message) => !message.startsWith(`${draft.label} `),
+    );
+    diagnostics.push(
+      reasons.length > 0
+        ? `${label} is excluded from the analysis: ${reasons.join(" ")}`
+        : `${label} is excluded from the analysis because its geometry could not be resolved.`,
+    );
+  }
+  const ports = portResolutions
+    .map(({ resolution }) => resolution.value)
     .filter((port): port is PortAnalysis => port !== null);
-  const exhaust = ports.find((port) => port.kind === "exhaust") ?? null;
+  const exhaustPorts = ports.filter((port) => port.kind === "exhaust");
+  const exhaust = exhaustPorts[0] ?? null;
   const transferPorts = ports.filter((port) => port.kind !== "exhaust");
+  if (exhaustPorts.length > 1) {
+    diagnostics.push(
+      `Only ${exhaust?.label ?? "the first exhaust port"} is used for blowdown, overlap and trapped-compression results. ${exhaustPorts
+        .slice(1)
+        .map((port) => port.label)
+        .join(", ")} contributes to port area only. Model additional exhaust area as width or count on a single exhaust port.`,
+    );
+  }
 
   const rotaryTiming = rotaryInduction.timing;
 
   const transfers: TransferAnalysis[] = transferPorts.map((port) => {
-    const blowdownDeg = exhaust
-      ? port.openingAngleDeg - exhaust.openingAngleDeg
+    const blowdown = exhaust
+      ? blowdownFromOpeningAngles(
+          exhaust.openingAngleDeg,
+          port.openingAngleDeg,
+        )
       : null;
+    if (blowdown) {
+      for (const message of diagnosticMessages(blowdown)) {
+        diagnostics.push(`${port.label}: ${message}`);
+      }
+    }
+    const blowdownDeg = blowdown?.value?.blowdownDeg ?? null;
     const exhaustOverlapDeg = exhaust
       ? circularIntervalOverlap(exhaust.interval, port.interval).value?.degrees ?? null
       : null;
@@ -1680,8 +1847,32 @@ function analyseProjectCore(
     project.compression.volumeMode === "component-breakdown"
       ? componentTotal
       : parseLocaleNumber(project.compression.clearanceVolumeCc);
+  if (
+    project.compression.volumeMode === "component-breakdown" &&
+    componentTotal === null
+  ) {
+    const missing = (
+      [
+        ["headChamber", "head chamber"],
+        ["gasket", "gasket"],
+        ["deck", "deck"],
+        ["pistonCrown", "piston crown"],
+        ["customCorrection", "custom correction"],
+      ] as const
+    )
+      .filter(([key]) => componentBreakdownCc[key] === null)
+      .map(([, label]) => label);
+    diagnostics.push(
+      `Component breakdown needs every volume to be filled in. Missing: ${missing.join(", ")}. Enter them, or switch to a measured total.`,
+    );
+  }
+  if (baselineClearanceVolume !== null && baselineClearanceVolume <= 0) {
+    diagnostics.push(
+      `The clearance volume resolves to ${baselineClearanceVolume.toFixed(2)} cc. A combustion chamber must have a positive volume, so compression results are unavailable.`,
+    );
+  }
   const cylinderLiftVolumeDeltaCc =
-    ((Math.PI * boreMm ** 2) / 4) * cylinderLiftMm / 1000;
+    cylindricalVolumeCc(boreMm, cylinderLiftMm);
   const clearanceVolume =
     baselineClearanceVolume === null
       ? null
@@ -1713,6 +1904,37 @@ function analyseProjectCore(
         }).value
       : null;
 
+  const crankcaseVolumeAtBdcCc = parseLocaleNumber(
+    project.crankcase.volumeAtBdcCc,
+  );
+  const primaryCompressionResult =
+    crankcaseVolumeAtBdcCc !== null && displacementCc !== null
+      ? primaryCompressionRatio({
+          crankcaseVolumeAtBdcCc,
+          sweptVolumeCc: displacementCc,
+        })
+      : null;
+  if (primaryCompressionResult) {
+    diagnostics.push(...diagnosticMessages(primaryCompressionResult));
+  }
+  const primaryCompression = primaryCompressionResult?.value ?? null;
+
+  const exhaustGasVelocityMps = parseLocaleNumber(
+    project.exhaust.gasVelocityMps,
+  );
+  const tunedLengthResult =
+    exhaust && rpm !== null && exhaustGasVelocityMps !== null
+      ? tunedExhaustLength({
+          exhaustDurationDeg: exhaust.durationDeg,
+          rpm,
+          gasVelocityMps: exhaustGasVelocityMps,
+        })
+      : null;
+  if (tunedLengthResult) {
+    diagnostics.push(...diagnosticMessages(tunedLengthResult));
+  }
+  const tunedLength = tunedLengthResult?.value ?? null;
+
   const gaps = [
     project.squish.gapNorthMm,
     project.squish.gapEastMm,
@@ -1723,20 +1945,62 @@ function analyseProjectCore(
     .filter((value): value is number => value !== null)
     .map((value) => value + cylinderLiftMm);
   const gapStatistics = gaps.length ? squishGapStatistics(gaps).value : null;
+  if (gaps.length > 0 && gaps.length < 4) {
+    diagnostics.push(
+      `Squish statistics use ${gaps.length} of 4 gap measurements. Enter all four to make the spread meaningful.`,
+    );
+  }
   const enteredBowlDiameterMm = parseLocaleNumber(project.squish.bowlDiameterMm);
   const enteredBandWidthMm = parseLocaleNumber(project.squish.bandWidthMm);
+  if (
+    project.squish.geometryMode === "band-width" &&
+    enteredBandWidthMm === null &&
+    enteredBowlDiameterMm !== null
+  ) {
+    diagnostics.push(
+      "Enter a squish band width. Squish results currently fall back to the bowl diameter, which this mode does not show.",
+    );
+  }
   const bowlDiameterMm =
     project.squish.geometryMode === "band-width" &&
     enteredBandWidthMm !== null
       ? boreMm - 2 * enteredBandWidthMm
       : enteredBowlDiameterMm;
-  const squishGeometry =
+  const squishGeometryResult =
     bowlDiameterMm !== null
-      ? squishGeometryFromBowlDiameter(boreMm, bowlDiameterMm).value
+      ? squishGeometryFromBowlDiameter(boreMm, bowlDiameterMm)
       : null;
+  if (squishGeometryResult) {
+    diagnostics.push(...diagnosticMessages(squishGeometryResult));
+  }
+  const squishGeometry = squishGeometryResult?.value ?? null;
   const manufacturerMinimumMm = parseLocaleNumber(
     project.squish.manufacturerMinimumMm,
   );
+
+  const squishVelocityResult =
+    squishGeometry && gapStatistics && rpm !== null && gapStatistics.meanMm > 0
+      ? maximumSquishVelocity({
+          strokeMm,
+          rodLengthMm,
+          boreMm,
+          bowlDiameterMm: squishGeometry.bowlDiameterMm,
+          squishGapMm: gapStatistics.meanMm,
+          rpm,
+        })
+      : null;
+  const squishVelocity = squishVelocityResult?.value ?? null;
+
+  // The chamber has to physically hold what the squish band and bowl imply.
+  if (squishGeometry && gapStatistics && clearanceVolume !== null) {
+    const bandVolumeCc =
+      (squishGeometry.squishBandAreaMm2 * gapStatistics.meanMm) / 1000;
+    if (bandVolumeCc > clearanceVolume) {
+      diagnostics.push(
+        `The squish band alone holds ${bandVolumeCc.toFixed(2)} cc, which is more than the ${clearanceVolume.toFixed(2)} cc clearance volume. The chamber measurements disagree.`,
+      );
+    }
+  }
   const characterRpmMinimum = parseLocaleNumber(project.character.rpmMinimum);
   const characterRpmMaximum = parseLocaleNumber(project.character.rpmMaximum);
   const characterRpmStep = parseLocaleNumber(project.character.rpmStep);
@@ -2238,6 +2502,14 @@ function analyseProjectCore(
     },
     character,
     characterGeometry,
+    crankcase: {
+      volumeAtBdcCc: crankcaseVolumeAtBdcCc,
+      primaryCompressionRatio: primaryCompression?.ratio ?? null,
+    },
+    exhaustResonance: {
+      tunedLengthMm: tunedLength?.tunedLengthMm ?? null,
+      gasVelocityMps: exhaustGasVelocityMps,
+    },
     compression: {
       clearanceVolumeMode: project.compression.volumeMode,
       geometricRatio: geometric?.ratio ?? null,
@@ -2261,6 +2533,8 @@ function analyseProjectCore(
         gapStatistics && manufacturerMinimumMm !== null
           ? gapStatistics.minimumMm < manufacturerMinimumMm
           : null,
+      maximumVelocityMps: squishVelocity?.maximumSquishVelocityMps ?? null,
+      velocityPeakAngleDeg: squishVelocity?.crankAngleAtMaximumDeg ?? null,
     },
     diagnostics: Array.from(
       new Set([
@@ -2340,7 +2614,7 @@ export function analyseProject(project: EngineProjectDraft): EngineProjectAnalys
   const boreMm = parseLocaleNumber(project.geometry.boreMm);
   const clearanceVolumeDeltaCc =
     boreMm !== null && boreMm > 0
-      ? ((Math.PI * boreMm ** 2) / 4) * appliedThicknessMm / 1000
+      ? cylindricalVolumeCc(boreMm, appliedThicknessMm)
       : null;
   const ports = current.ports.flatMap((port) => {
     const baselinePort = baseline.ports.find((item) => item.id === port.id);

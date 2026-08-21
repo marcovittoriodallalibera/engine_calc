@@ -770,6 +770,25 @@ a {
   font-size: 12px;
 }
 
+.field-derived {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin-top: 4px;
+}
+
+.field-derived .text-button {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.field-derived small {
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .cylinder-lift-note {
   margin: 0;
   padding: 9px 10px;

@@ -90,3 +90,44 @@ test("invalid port geometry is diagnostic and does not throw", () => {
   assert.equal(result.value, null);
   assert.ok(result.diagnostics.some((item) => item.field === "portWidthMm"));
 });
+
+test("a port that never closes integrates the whole cycle", () => {
+  const geometry = {
+    strokeMm: 51,
+    rodLengthMm: 97,
+    roofTravelFromTdcMm: 0,
+    portWidthMm: 39,
+    portHeightMm: 17,
+    portCount: 1,
+  };
+
+  const collapsed = integrateRectangularPortAngleArea({
+    ...geometry,
+    startAngleDeg: 0,
+    endAngleDeg: 0,
+    integrationStepDeg: 0.25,
+  });
+  assert.equal(collapsed.value?.angleAreaMm2Deg, 0);
+
+  const fullCycle = integrateRectangularPortAngleArea({
+    ...geometry,
+    startAngleDeg: 0,
+    endAngleDeg: 0,
+    fullCycle: true,
+    integrationStepDeg: 0.25,
+  });
+  const explicit = integrateRectangularPortAngleArea({
+    ...geometry,
+    startAngleDeg: 0,
+    endAngleDeg: 360,
+    integrationStepDeg: 0.25,
+  });
+
+  assert.ok((fullCycle.value?.angleAreaMm2Deg ?? 0) > 0);
+  assert.equal(fullCycle.value?.integratedDurationDeg, 360);
+  assert.equal(
+    fullCycle.value?.angleAreaMm2Deg,
+    explicit.value?.angleAreaMm2Deg,
+    "the full-cycle flag must match an explicit 0-360 sweep",
+  );
+});

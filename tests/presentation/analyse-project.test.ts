@@ -621,3 +621,420 @@ test("every advisory exposes complete claim, provenance and scope metadata", () 
     }
   }
 });
+
+test("an invalid port is reported rather than silently dropped", () => {
+  const project = cloneDemonstrationProject();
+  const exhaust = project.ports.find((port) => port.kind === "exhaust");
+  assert.ok(exhaust);
+  exhaust.sourceMode = "opening-angle";
+  exhaust.sourceValue = "200";
+
+  const result = analyseProject(project);
+
+  assert.equal(result.exhaust, null);
+  assert.equal(
+    result.ports.some((port) => port.kind === "exhaust"),
+    false,
+  );
+  const notice = result.diagnostics.find((message) =>
+    message.includes("excluded from the analysis"),
+  );
+  assert.ok(notice, "a dropped port must name itself in the diagnostics");
+  assert.ok(notice.includes(exhaust.label));
+  assert.ok(
+    notice.includes("180"),
+    "the kernel reason must survive into the message",
+  );
+});
+
+test("an unparseable port position reports a reason", () => {
+  const project = cloneDemonstrationProject();
+  project.ports[0].sourceValue = "not a number";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("numeric port position"),
+    ),
+  );
+});
+
+test("roof depth without a crown position explains what is missing", () => {
+  const project = cloneDemonstrationProject();
+  project.geometry.deckPositionMm = "";
+  project.ports[0].sourceMode = "depth-from-deck";
+  project.ports[0].sourceValue = "30";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("piston crown position at TDC"),
+    ),
+  );
+});
+
+test("a bowl wider than the bore is rejected instead of rendered", () => {
+  const project = cloneDemonstrationProject();
+  project.squish.geometryMode = "bowl-diameter";
+  project.squish.bowlDiameterMm = "999";
+
+  const result = analyseProject(project);
+
+  assert.equal(result.squish.areaPercent, null);
+  assert.ok(
+    result.diagnostics.length > 0,
+    "an impossible bowl diameter must produce a diagnostic",
+  );
+});
+
+test("an incomplete component breakdown names the missing volumes", () => {
+  const project = cloneDemonstrationProject();
+  project.compression.volumeMode = "component-breakdown";
+  project.compression.deckVolumeCc = "";
+
+  const result = analyseProject(project);
+
+  assert.equal(result.compression.geometricRatio, null);
+  const notice = result.diagnostics.find((message) =>
+    message.includes("Component breakdown"),
+  );
+  assert.ok(notice);
+  assert.ok(notice.includes("deck"));
+});
+
+test("a negative clearance volume is reported", () => {
+  const project = cloneDemonstrationProject();
+  project.compression.volumeMode = "component-breakdown";
+  project.compression.pistonCrownVolumeCc = "-99";
+
+  const result = analyseProject(project);
+
+  assert.equal(result.compression.geometricRatio, null);
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("positive volume"),
+    ),
+  );
+});
+
+test("band-width mode without a band width does not silently use the bowl", () => {
+  const project = cloneDemonstrationProject();
+  project.squish.geometryMode = "band-width";
+  project.squish.bandWidthMm = "";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("squish band width"),
+    ),
+  );
+});
+
+test("partial squish gap measurements are flagged", () => {
+  const project = cloneDemonstrationProject();
+  project.squish.gapEastMm = "";
+  project.squish.gapWestMm = "";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) => message.includes("2 of 4")),
+  );
+});
+
+test("a second exhaust port is reported as area-only", () => {
+  const project = cloneDemonstrationProject();
+  const secondary = project.ports.find(
+    (port) => port.kind === "secondary-transfer",
+  );
+  assert.ok(secondary);
+  secondary.kind = "exhaust";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("port area only"),
+    ),
+  );
+});
+
+test("arc geometry is validated when direct angles drive an overlap area", () => {
+  const project = cloneDemonstrationProject();
+  project.induction.timingSource = "direct-angles";
+  project.induction.areaSource = "cylindrical-overlap";
+  project.induction.measuredArcMm = "999";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.length > 0,
+    "an unusable arc must be reported even in direct-angle mode",
+  );
+});
+
+test("a constant inlet area does not demand arc geometry", () => {
+  const project = cloneDemonstrationProject();
+  project.induction.timingSource = "direct-angles";
+  project.induction.areaSource = "constant-area";
+  project.induction.effectiveWindowAreaMm2 = "450";
+  project.induction.measuredArcMm = "";
+
+  const result = analyseProject(project);
+
+  assert.equal(
+    result.diagnostics.some((message) => message.includes("Arc overlap")),
+    false,
+  );
+});
+
+test("a transfer opening before the exhaust is warned about", () => {
+  const project = cloneDemonstrationProject();
+  const exhaust = project.ports.find((port) => port.kind === "exhaust");
+  const primary = project.ports.find(
+    (port) => port.kind === "primary-transfer",
+  );
+  assert.ok(exhaust && primary);
+  exhaust.sourceValue = "42";
+  primary.sourceValue = "30";
+
+  const result = analyseProject(project);
+
+  assert.ok((result.transfers[0]?.blowdownDeg ?? 0) < 0);
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("opens before the exhaust"),
+    ),
+    "the kernel blowdown warning must reach the user",
+  );
+});
+
+test("a roof depth above the crown at TDC is rejected", () => {
+  const project = cloneDemonstrationProject();
+  project.geometry.deckPositionMm = "2";
+  project.ports[0].sourceMode = "depth-from-deck";
+  project.ports[0].sourceValue = "1";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("above the piston crown"),
+    ),
+  );
+});
+
+test("a roof depth beyond the stroke is rejected", () => {
+  const project = cloneDemonstrationProject();
+  project.geometry.deckPositionMm = "0";
+  project.ports[0].sourceMode = "depth-from-deck";
+  project.ports[0].sourceValue = "400";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) => message.includes("exceeds the stroke")),
+  );
+});
+
+test("port width, height and count are validated in the live path", () => {
+  const project = cloneDemonstrationProject();
+  project.ports[0].widthMm = "0";
+  project.ports[1].heightMm = "-3";
+  project.ports[2].count = "2.5";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) => message.includes("width must be")),
+  );
+  assert.ok(
+    result.diagnostics.some((message) => message.includes("height must be")),
+  );
+  assert.ok(
+    result.diagnostics.some((message) => message.includes("whole number")),
+  );
+});
+
+test("a reference speed outside the character sweep is reported", () => {
+  const project = cloneDemonstrationProject();
+  project.geometry.rpm = "12000";
+  project.transmission.maximumRpm = "13000";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("character sweep"),
+    ),
+  );
+});
+
+test("a reference speed above the gearing ceiling is reported", () => {
+  const project = cloneDemonstrationProject();
+  project.geometry.rpm = "10500";
+  project.character.rpmMaximum = "11000";
+  project.transmission.maximumRpm = "9000";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) => message.includes("not plotted")),
+  );
+});
+
+test("tooth counts outside the selected gear count are reported", () => {
+  const project = cloneDemonstrationProject();
+  project.transmission.gearCount = 4;
+  project.transmission.gears[4].clusterPinionTeeth = "26";
+  project.transmission.gears[4].drivenGearTeeth = "42";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("outside the 4-speed gearbox"),
+    ),
+  );
+});
+
+test("the demonstration project raises no speed or gearbox conflict", () => {
+  const result = analyseProject(cloneDemonstrationProject());
+
+  assert.equal(
+    result.diagnostics.some(
+      (message) =>
+        message.includes("character sweep") ||
+        message.includes("not plotted") ||
+        message.includes("gearbox"),
+    ),
+    false,
+  );
+});
+
+test("a chord width is developed along the liner before integration", () => {
+  const project = cloneDemonstrationProject();
+  const exhaust = project.ports.find((port) => port.kind === "exhaust");
+  assert.ok(exhaust);
+
+  exhaust.widthMeasurement = "chord";
+  const chord = analyseProject(project);
+  exhaust.widthMeasurement = "developed";
+  const developed = analyseProject(project);
+
+  const chordPort = chord.ports.find((port) => port.kind === "exhaust");
+  const developedPort = developed.ports.find((port) => port.kind === "exhaust");
+  assert.ok(chordPort && developedPort);
+
+  assert.ok(Math.abs((chordPort.developedWidthMm ?? 0) - 42.455066) < 1e-5);
+  assert.equal(developedPort.developedWidthMm, 39);
+  assert.ok(
+    (chordPort.angleAreaMm2Deg ?? 0) > (developedPort.angleAreaMm2Deg ?? 0),
+    "developing the chord increases the port area",
+  );
+});
+
+test("a chord wider than the bore excludes the port with a reason", () => {
+  const project = cloneDemonstrationProject();
+  project.ports[0].widthMeasurement = "chord";
+  project.ports[0].widthMm = "70";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("cannot exceed the bore"),
+    ),
+  );
+});
+
+test("primary compression appears once a crankcase volume is entered", () => {
+  const project = cloneDemonstrationProject();
+  assert.equal(analyseProject(project).crankcase.primaryCompressionRatio, null);
+
+  project.crankcase.volumeAtBdcCc = "700";
+  const result = analyseProject(project);
+
+  assert.ok(
+    Math.abs((result.crankcase.primaryCompressionRatio ?? 0) - 1.20599872) <
+      1e-6,
+  );
+});
+
+test("a crankcase smaller than the swept volume is reported", () => {
+  const project = cloneDemonstrationProject();
+  project.crankcase.volumeAtBdcCc = "80";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("not larger than the swept volume"),
+    ),
+  );
+});
+
+test("tuned exhaust length follows the exhaust duration and engine speed", () => {
+  const project = cloneDemonstrationProject();
+  const result = analyseProject(project);
+
+  const duration = result.exhaust?.durationDeg;
+  assert.ok(duration);
+  const expected = (1000 * 500 * duration) / (12 * 8000);
+  assert.ok(
+    Math.abs((result.exhaustResonance.tunedLengthMm ?? 0) - expected) < 1e-6,
+  );
+  assert.equal(result.exhaustResonance.gasVelocityMps, 500);
+});
+
+test("squish velocity is reported for the demonstration chamber", () => {
+  const result = analyseProject(cloneDemonstrationProject());
+
+  const velocity = result.squish.maximumVelocityMps;
+  assert.ok(velocity !== null && velocity > 1 && velocity < 60);
+  const peak = result.squish.velocityPeakAngleDeg;
+  assert.ok(peak !== null && peak > 0 && peak < 45);
+});
+
+test("a chamber too small for its own squish band is reported", () => {
+  const project = cloneDemonstrationProject();
+  project.compression.clearanceVolumeCc = "0.5";
+
+  const result = analyseProject(project);
+
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("chamber measurements disagree"),
+    ),
+  );
+});
+
+test("uncertainty that cannot apply to an angle input is reported, not ignored", () => {
+  const project = cloneDemonstrationProject();
+  project.ports[0].sourceMode = "opening-angle";
+  project.ports[0].sourceValue = "90";
+  project.ports[0].uncertaintyMm = "0.10";
+
+  const result = analyseProject(project);
+
+  const port = result.ports.find((item) => item.id === project.ports[0].id);
+  assert.ok(port);
+  assert.equal(port.uncertainty, null);
+  assert.ok(
+    result.diagnostics.some((message) =>
+      message.includes("does not apply to an angle-based timing input"),
+    ),
+  );
+});
+
+test("uncertainty still propagates from a travel input", () => {
+  const project = cloneDemonstrationProject();
+  const result = analyseProject(project);
+
+  const port = result.ports.find((item) => item.kind === "exhaust");
+  assert.ok(port?.uncertainty);
+  assert.ok(port.uncertainty.openingMaxDeg > port.uncertainty.openingMinDeg);
+});

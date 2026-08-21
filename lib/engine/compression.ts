@@ -5,6 +5,7 @@ import {
   errorDiagnostic,
   nonNegativeNumberDiagnostic,
   positiveNumberDiagnostic,
+  warningDiagnostic,
   type CalculationResult,
   type Diagnostic,
 } from "./result.ts";
@@ -95,11 +96,21 @@ export interface CompressionScenarioResult {
   after: CompressionScenarioState;
 }
 
+/** Bore cross-sectional area in square millimetres. */
+export function boreAreaMm2(boreMm: number): number {
+  return (Math.PI * boreMm ** 2) / 4;
+}
+
+/** Swept volume in cubic centimetres for a bore and an axial height. */
+export function cylindricalVolumeCc(boreMm: number, heightMm: number): number {
+  return (boreAreaMm2(boreMm) * heightMm) / 1000;
+}
+
 export function cylinderAreaMm2(boreMm: number): CalculationResult<number> {
   const diagnostics = collectDiagnostics(positiveNumberDiagnostic(boreMm, "boreMm"));
   return diagnostics.length > 0
     ? calculationResult(null, diagnostics)
-    : calculationResult((Math.PI * boreMm ** 2) / 4);
+    : calculationResult(boreAreaMm2(boreMm));
 }
 
 export function displacement(input: CylinderGeometry): CalculationResult<DisplacementResult> {
@@ -117,7 +128,7 @@ export function displacement(input: CylinderGeometry): CalculationResult<Displac
   if (diagnostics.some((item) => item.severity === "error")) {
     return calculationResult(null, diagnostics);
   }
-  const area = (Math.PI * input.boreMm ** 2) / 4;
+  const area = boreAreaMm2(input.boreMm);
   const displacementPerCylinderCc = (area * input.strokeMm) / 1000;
   return calculationResult({
     cylinderAreaMm2: area,
@@ -176,7 +187,7 @@ export function trappedCompressionRatio(
     return calculationResult(null, diagnostics);
   }
   const trappedSweptVolumeCc =
-    ((Math.PI * input.boreMm ** 2) / 4) * input.exhaustClosureTravelFromTdcMm / 1000;
+    cylindricalVolumeCc(input.boreMm, input.exhaustClosureTravelFromTdcMm);
   return calculationResult({
     trappedSweptVolumeCc,
     clearanceVolumeCc: input.clearanceVolumeCc,
@@ -251,7 +262,7 @@ export function targetClearanceVolumeForTrappedRatio(
     return calculationResult(null, diagnostics);
   }
   const trappedSweptVolumeCc =
-    ((Math.PI * input.boreMm ** 2) / 4) * input.exhaustClosureTravelFromTdcMm / 1000;
+    cylindricalVolumeCc(input.boreMm, input.exhaustClosureTravelFromTdcMm);
   return calculationResult({
     targetClearanceVolumeCc: trappedSweptVolumeCc / (input.targetTrappedRatio - 1),
     trappedSweptVolumeCc,
@@ -355,7 +366,7 @@ export function evaluateCompressionScenario(
 
   const before = buildScenarioState(input);
   diagnostics.push(...before.diagnostics);
-  const area = (Math.PI * input.boreMm ** 2) / 4;
+  const area = boreAreaMm2(input.boreMm);
   const clearanceVolumeDeltaCc =
     change.kind === "head-gasket" || change.kind === "base-spacer"
       ? area * change.thicknessMm / 1000
@@ -384,6 +395,58 @@ export function evaluateCompressionScenario(
   if (!before.value || !after.value) return calculationResult(null, diagnostics);
   return calculationResult(
     { change, clearanceVolumeDeltaCc, before: before.value, after: after.value },
+    diagnostics,
+  );
+}
+
+export interface PrimaryCompressionInput {
+  crankcaseVolumeAtBdcCc: number;
+  sweptVolumeCc: number;
+}
+
+export interface PrimaryCompressionResult {
+  crankcaseVolumeAtBdcCc: number;
+  sweptVolumeCc: number;
+  ratio: number;
+}
+
+/**
+ * Crankcase (primary) compression ratio.
+ *
+ * The case volume at BDC already includes the descending piston, so the ratio
+ * compares that volume plus the swept volume against the volume alone. This is
+ * a geometric volume ratio, not a pressure prediction.
+ */
+export function primaryCompressionRatio(
+  input: PrimaryCompressionInput,
+): CalculationResult<PrimaryCompressionResult> {
+  const diagnostics = collectDiagnostics(
+    positiveNumberDiagnostic(
+      input.crankcaseVolumeAtBdcCc,
+      "crankcaseVolumeAtBdcCc",
+    ),
+    positiveNumberDiagnostic(input.sweptVolumeCc, "sweptVolumeCc"),
+  );
+  if (diagnostics.some((item) => item.severity === "error")) {
+    return calculationResult(null, diagnostics);
+  }
+  if (input.crankcaseVolumeAtBdcCc <= input.sweptVolumeCc) {
+    diagnostics.push(
+      warningDiagnostic(
+        "CRANKCASE_VOLUME_BELOW_SWEPT",
+        "The crankcase volume at BDC is not larger than the swept volume, which is outside the range of a running two-stroke.",
+        "crankcaseVolumeAtBdcCc",
+      ),
+    );
+  }
+  return calculationResult(
+    {
+      crankcaseVolumeAtBdcCc: input.crankcaseVolumeAtBdcCc,
+      sweptVolumeCc: input.sweptVolumeCc,
+      ratio:
+        (input.crankcaseVolumeAtBdcCc + input.sweptVolumeCc) /
+        input.crankcaseVolumeAtBdcCc,
+    },
     diagnostics,
   );
 }

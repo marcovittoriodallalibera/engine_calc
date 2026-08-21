@@ -60,7 +60,7 @@ test("server-renders the complete calculator shell", async () => {
   assert.match(html, /Rotary geometry solver/);
   assert.match(html, /Desired inlet opening/);
   assert.match(html, /Desired inlet closing/);
-  assert.match(html, /Valve timing-track diameter/);
+  assert.match(html, /Timing-track diameter/);
   assert.match(html, /Diameter uncertainty/);
   assert.match(html, /aria-label="Manual arc measurement"/);
   assert.match(html, /Measured crank cut-away arc/);
@@ -155,4 +155,32 @@ test("keeps character graph values visible in the print report", async () => {
   assert.match(printStyles, /\.gearing-results\s*\{[^}]*break-before:\s*page;/su);
   assert.match(printStyles, /\.gearing-chart-frame\s*\{[^}]*margin-top:/su);
   assert.match(printStyles, /\.gearing-chart\s*\{[^}]*min-width:\s*0;/su);
+});
+
+test("renames ambiguous labels and exposes the port type control", async () => {
+  const response = await render();
+  const html = await response.text();
+
+  assert.match(html, /Port type/);
+  assert.match(html, /Target clearance volume/);
+  // One quantity, one name.
+  assert.doesNotMatch(html, /Valve timing-track diameter/);
+  // Signed corrections are not tolerances.
+  assert.doesNotMatch(html, /± cc/);
+});
+
+test("renders the crankcase, resonance and squish velocity additions", async () => {
+  const response = await render();
+  const html = await response.text();
+
+  assert.match(html, /Crankcase volume at BDC/);
+  assert.match(html, /Primary compression ratio/);
+  assert.match(html, /Assumed exhaust gas wave speed/);
+  assert.match(html, /Resonant exhaust length/);
+  assert.match(html, /Maximum squish velocity/);
+  assert.match(html, /Width measured as/);
+  assert.match(html, /Chord across the window/);
+  // Every added model states its boundary.
+  assert.match(html, /does not model pipe diameters/);
+  assert.match(html, /predicts\s+no combustion outcome/i);
 });

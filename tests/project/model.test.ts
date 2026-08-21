@@ -5,7 +5,9 @@ import {
   MAX_PROJECT_BYTES,
   MAX_SHARE_FRAGMENT_LENGTH,
   PROJECT_SCHEMA_VERSION,
+  changeCompressionVolumeMode,
   changeRotaryMeasuredArc,
+  changeSquishGeometryMode,
   cloneDemonstrationProject,
   decodeProjectFragment,
   encodeProjectFragment,
@@ -385,4 +387,138 @@ test("creates stable ASCII-safe project filename stems", () => {
   assert.equal(safeProjectFilename("  Màrcó / Vespa: Ø60?  "), "marco-vespa-60");
   assert.equal(safeProjectFilename("../../"), "phase-360-project");
   assert.equal(safeProjectFilename("x".repeat(100)).length, 64);
+});
+
+test("switching squish geometry mode promotes the measured value", () => {
+  const project = cloneDemonstrationProject();
+  project.squish.geometryMode = "bowl-diameter";
+  project.squish.bowlDiameterMm = "42";
+  project.squish.bandWidthMm = "999";
+
+  const toBand = changeSquishGeometryMode(project.squish, "band-width", 60);
+  assert.equal(toBand.geometryMode, "band-width");
+  assert.equal(toBand.bandWidthMm, "9");
+
+  const backToBowl = changeSquishGeometryMode(toBand, "bowl-diameter", 60);
+  assert.equal(backToBowl.bowlDiameterMm, "42");
+});
+
+test("squish mode switch leaves the value alone when it cannot be derived", () => {
+  const squish = cloneDemonstrationProject().squish;
+  squish.geometryMode = "bowl-diameter";
+  squish.bowlDiameterMm = "";
+
+  const result = changeSquishGeometryMode(squish, "band-width", 60);
+  assert.equal(result.geometryMode, "band-width");
+  assert.equal(result.bandWidthMm, squish.bandWidthMm);
+
+  const noBore = changeSquishGeometryMode(squish, "band-width", null);
+  assert.equal(noBore.geometryMode, "band-width");
+});
+
+test("switching to a measured total carries the component sum across", () => {
+  const compression = cloneDemonstrationProject().compression;
+  compression.volumeMode = "component-breakdown";
+  compression.headChamberVolumeCc = "10.8";
+  compression.gasketVolumeCc = "0.6";
+  compression.deckVolumeCc = "1";
+  compression.pistonCrownVolumeCc = "0";
+  compression.customCorrectionCc = "0";
+
+  const result = changeCompressionVolumeMode(compression, "measured-total");
+  assert.equal(result.volumeMode, "measured-total");
+  assert.equal(result.clearanceVolumeCc, "12.4");
+});
+
+test("switching to a component breakdown seeds the head chamber", () => {
+  const compression = cloneDemonstrationProject().compression;
+  compression.volumeMode = "measured-total";
+  compression.clearanceVolumeCc = "12.4";
+
+  const result = changeCompressionVolumeMode(compression, "component-breakdown");
+  assert.equal(result.headChamberVolumeCc, "12.4");
+  assert.equal(result.gasketVolumeCc, "0");
+  assert.equal(result.deckVolumeCc, "0");
+});
+
+test("a promoted compression mode round trips to the same total", () => {
+  const compression = cloneDemonstrationProject().compression;
+  compression.volumeMode = "measured-total";
+  compression.clearanceVolumeCc = "13.75";
+
+  const toBreakdown = changeCompressionVolumeMode(
+    compression,
+    "component-breakdown",
+  );
+  const backToTotal = changeCompressionVolumeMode(toBreakdown, "measured-total");
+  assert.equal(backToTotal.clearanceVolumeCc, "13.75");
+});
+
+test("schema 6 projects migrate without changing their port area", () => {
+  const legacy = cloneDemonstrationProject() as unknown as Record<
+    string,
+    unknown
+  >;
+  legacy.schemaVersion = 6;
+  delete legacy.crankcase;
+  delete legacy.exhaust;
+  for (const port of legacy.ports as Array<Record<string, unknown>>) {
+    delete port.widthMeasurement;
+  }
+
+  const parsed = validateProjectDocument(legacy);
+
+  assert.equal(parsed.ok, true);
+  if (parsed.ok) {
+    assert.equal(parsed.project.schemaVersion, PROJECT_SCHEMA_VERSION);
+    // The entered width was already integrated as the flow-facing width, so a
+    // migrated project must keep reading it that way.
+    assert.ok(
+      parsed.project.ports.every(
+        (port) => port.widthMeasurement === "developed",
+      ),
+    );
+    assert.equal(parsed.project.crankcase.volumeAtBdcCc, "");
+    assert.equal(parsed.project.exhaust.gasVelocityMps, "500");
+  }
+});
+
+test("a schema 7 project keeps its declared width basis", () => {
+  const project = cloneDemonstrationProject();
+  const parsed = validateProjectDocument(project);
+
+  assert.equal(parsed.ok, true);
+  if (parsed.ok) {
+    assert.ok(
+      parsed.project.ports.every((port) => port.widthMeasurement === "chord"),
+    );
+  }
+});
+
+test("rejects an unknown width basis and a negative crankcase volume", () => {
+  const badBasis = cloneDemonstrationProject() as unknown as Record<
+    string,
+    unknown
+  >;
+  (badBasis.ports as Array<Record<string, unknown>>)[0].widthMeasurement =
+    "diagonal";
+  assert.equal(validateProjectDocument(badBasis).ok, false);
+
+  const badCase = cloneDemonstrationProject();
+  badCase.crankcase.volumeAtBdcCc = "-40";
+  assert.equal(validateProjectDocument(badCase).ok, false);
+});
+
+test("a schema 7 project round trips through JSON and a share fragment", () => {
+  const project = cloneDemonstrationProject();
+  project.crankcase.volumeAtBdcCc = "690";
+  project.exhaust.gasVelocityMps = "520";
+
+  const viaJson = parseProjectJson(serialiseProject(project));
+  assert.equal(viaJson.ok, true);
+  if (viaJson.ok) assert.deepEqual(viaJson.project, project);
+
+  const viaFragment = decodeProjectFragment(encodeProjectFragment(project));
+  assert.equal(viaFragment.ok, true);
+  if (viaFragment.ok) assert.deepEqual(viaFragment.project, project);
 });
